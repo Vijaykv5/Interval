@@ -7,12 +7,14 @@ datasource db {
 }
 
 model Creator {
-  id        String   @id @default(uuid())
-  username  String   @unique
-  wallet    String
-  bio       String?
-  createdAt DateTime @default(now())
-  slots     Slot[]
+  id                String   @id @default(uuid())
+  username          String   @unique
+  wallet            String   @unique
+  profileImageUrl   String?
+  bio               String?
+  createdAt         DateTime @default(now())
+  slots             Slot[]
+  bookings          Booking[]
 }
 
 model Slot {
@@ -23,4 +25,20 @@ model Slot {
   endTime   DateTime
   price     Float
   status    String   @default("available")
+  booking   Booking?
+}
+
+model Booking {
+  id          String   @id @default(uuid())
+  slot        Slot     @relation(fields: [slotId], references: [id])
+  slotId      String   @unique
+  creator     Creator  @relation(fields: [creatorId], references: [id])
+  creatorId   String
+  payerWallet String
+  amountSol   Float
+  name        String?
+  email       String?
+  callFor     String?
+  signature   String?
+  createdAt   DateTime @default(now())
 }

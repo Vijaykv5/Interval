@@ -1,10 +1,16 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { usePrivy } from "@privy-io/react-auth";
+import { useWallets } from "@privy-io/react-auth/solana";
 import { WalletAuth } from "@/components/wallet-auth";
 
-const navItems = [{ href: "/dashboard", label: "Dashboard" }];
+const navItems = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard/onboarding", label: "Profile" },
+];
 
 export default function DashboardLayout({
   children,
@@ -12,6 +18,67 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { ready, authenticated } = usePrivy();
+  const { wallets } = useWallets();
+  const [authChecked, setAuthChecked] = useState(false);
+
+  const solanaWallet = wallets[0];
+  const walletAddress = solanaWallet?.address ?? null;
+  const isOnboardingPage = pathname === "/dashboard/onboarding";
+
+  useEffect(() => {
+    if (!ready) return;
+
+    if (!authenticated) {
+      router.replace("/");
+      return;
+    }
+
+    if (isOnboardingPage) {
+      setAuthChecked(true);
+      return;
+    }
+
+    if (!walletAddress) {
+      setAuthChecked(true);
+      return;
+    }
+
+    let cancelled = false;
+    async function ensureCreator() {
+      try {
+        const res = await fetch(
+          `/api/creator?wallet=${encodeURIComponent(walletAddress)}`
+        );
+        if (cancelled) return;
+        if (!res.ok) {
+          router.replace("/dashboard/onboarding");
+          return;
+        }
+      } catch {
+        if (!cancelled) router.replace("/dashboard/onboarding");
+        return;
+      }
+      setAuthChecked(true);
+    }
+    ensureCreator();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, authenticated, walletAddress, isOnboardingPage, router]);
+
+  if (!ready || (!isOnboardingPage && !authChecked)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-gray-500">Loading…</div>
+      </div>
+    );
+  }
+
+  if (!authenticated) {
+    return null;
+  }
 
   return (
     <div className="flex min-h-screen">
