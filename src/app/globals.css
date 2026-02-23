@@ -1,2 +1,20 @@
 @import "tailwindcss";
 
+/* Summit Rush color palette */
+:root {
+  /* Main gradient colors */
+  --summit-deep: #1e3a5f;
+  --summit-mid: #2d5a87;
+  --summit-sky: #5a9fd4;
+  --summit-light: #87ceeb;
+  --summit-pale: #b8e0f5;
+  /* Accent */
+  --summit-accent: #0ea5e9;
+  --summit-accent-hover: #38bdf8;
+  --summit-border: rgba(56, 189, 248, 0.6);
+  /* Background gradient */
+  --summit-bg: linear-gradient(180deg, #b8e0f5 0%, #87ceeb 30%, #5a9fd4 55%, #4a7ba7 78%, #3a6b95 100%);
+  --summit-overlay: linear-gradient(to top, rgba(255,255,255,0.2) 0%, transparent 35%, transparent 100%);
+  --summit-bottom: linear-gradient(to top, rgba(255,255,255,0.85) 0%, rgba(200,220,255,0.3) 60%, transparent 100%);
+}
+
