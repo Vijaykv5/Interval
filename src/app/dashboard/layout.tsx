@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
@@ -15,7 +15,7 @@ const dashboardSections = [
   { section: "create", label: "Create slot" },
 ];
 
-export default function DashboardLayout({
+function DashboardLayoutClient({
   children,
 }: {
   children: React.ReactNode;
@@ -155,5 +155,25 @@ export default function DashboardLayout({
         />
       )}
     </div>
+  );
+}
+
+function DashboardLayoutFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#030305]">
+      <div className="text-white/60">Loading…</div>
+    </div>
+  );
+}
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <Suspense fallback={<DashboardLayoutFallback />}>
+      <DashboardLayoutClient>{children}</DashboardLayoutClient>
+    </Suspense>
   );
 }
