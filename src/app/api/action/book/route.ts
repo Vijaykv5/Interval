@@ -17,6 +17,7 @@ import {
 import { MEMO_PROGRAM_ID } from "@solana/actions";
 import { prisma } from "@/lib/prisma";
 import { ACTION_ICON_FALLBACK } from "@/lib/constants";
+import { sendBookingConfirmationEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -272,6 +273,18 @@ export async function POST(req: Request) {
     const meetMsg = slot.meetLink
       ? ` After signing, open this link to join your meeting: ${joinUrl}`
       : "";
+
+    if (email) {
+      sendBookingConfirmationEmail({
+        to: email,
+        creatorName: slot.creator.username,
+        startTime: new Date(slot.startTime),
+        endTime: new Date(slot.endTime),
+        joinUrl,
+        meetLink: slot.meetLink,
+        amountSol: slot.price,
+      }).catch((err) => console.error("Confirmation email failed:", err));
+    }
 
     const payload = await createPostResponse({
       fields: {

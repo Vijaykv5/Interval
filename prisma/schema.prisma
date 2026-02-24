@@ -12,6 +12,7 @@ model Creator {
   wallet            String   @unique
   profileImageUrl   String?
   bio               String?
+  xAccount          String?
   createdAt         DateTime @default(now())
   slots             Slot[]
   bookings          Booking[]

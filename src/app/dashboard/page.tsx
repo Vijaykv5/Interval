@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { useWallets } from "@privy-io/react-auth/solana";
 
 type Slot = {
@@ -240,6 +241,9 @@ export default function Dashboard() {
     }
   }
 
+  const searchParams = useSearchParams();
+  const activeSection = (searchParams.get("section") as "overview" | "slots" | "bookings" | "create") || "overview";
+
   const hasCreator = creator != null;
   const meetings = dashboard?.upcomingMeetings ?? [];
   const mySlots = dashboard?.mySlots ?? [];
@@ -264,312 +268,221 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-8 md:p-10 max-w-4xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Dashboard</h1>
-      <p className="text-gray-500 text-sm mb-8">
-        Your upcoming meetings and earnings at a glance.
-      </p>
-
-      {hasCreator && (
-        <p className="text-sm text-gray-500 mb-2">
-          Logged in as <span className="font-medium text-gray-700">{creator.username}</span>
-        </p>
-      )}
-      {!walletAddress && (
-        <div className="mb-6 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
-          Connect your wallet in the sidebar to create slots and see your dashboard.
-        </div>
-      )}
-
-      {loading ? (
-        <div className="space-y-6 mb-10">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 h-48 animate-pulse" />
-          <div className="grid gap-6 sm:grid-cols-2">
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 h-36 animate-pulse" />
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 h-36 animate-pulse" />
+    <div className="p-6 md:p-8 max-w-4xl">
+        {!walletAddress && (
+          <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+            Connect your wallet in the sidebar to create slots and see your dashboard.
           </div>
-        </div>
-      ) : (
-        <>
-          {/* Your slots – list from DB with blink links */}
-          <section className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8 mb-8">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Your slots
-            </h2>
-            {mySlots.length === 0 ? (
-              <div className="text-center py-6 text-gray-500">
-                <p className="font-medium text-gray-700">No slots yet</p>
-                <p className="text-sm mt-1">
-                  Create a slot below. Each slot gets a Solana blink link to share for booking.
-                </p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-gray-100">
-                {mySlots.map((slot) => (
-                  <li
-                    key={slot.id}
-                    className="py-4 first:pt-0 last:pb-0 flex flex-wrap items-center justify-between gap-3"
-                  >
-                    <div>
-                      <p className="font-medium text-gray-900">
-                        {formatMeetingDate(slot.startTime)}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)} · {Number(slot.price).toFixed(2)} SOL
-                      </p>
-                      {slot.meetLink && (
-                        <a
-                          href={slot.meetLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-blue-600 hover:text-blue-700 underline mt-1 inline-block"
-                        >
-                          Join meeting →
-                        </a>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {slot.status === "available" ? (
-                        <>
-                          <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
-                            Available
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => copyBlink(slot.id)}
-                            className="text-sm font-medium text-gray-700 hover:text-gray-900 underline"
-                          >
-                            Copy blink link
-                          </button>
-                        </>
+        )}
+
+        {loading ? (
+          <div className="space-y-6">
+            <div className="h-32 rounded-xl bg-gray-100 animate-pulse" />
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="h-24 rounded-xl bg-gray-100 animate-pulse" />
+              <div className="h-24 rounded-xl bg-gray-100 animate-pulse" />
+              <div className="h-24 rounded-xl bg-gray-100 animate-pulse" />
+            </div>
+          </div>
+        ) : (
+          <>
+            {activeSection === "overview" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Overview</h2>
+                  <p className="text-sm text-gray-500">Your stats at a glance</p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Wallet balance</p>
+                    <p className="mt-1 text-2xl font-bold text-gray-900">
+                      {walletBalance != null ? (
+                        <>{walletBalance.toFixed(4)} <span className="text-base font-semibold text-gray-500">SOL</span></>
                       ) : (
-                        <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
-                          Booked
-                        </span>
+                        <span className="text-gray-400">—</span>
                       )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {/* Payments / Bookings */}
-          <section className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8 mb-8">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Payments & bookings
-            </h2>
-            {bookings.length === 0 ? (
-              <div className="text-center py-10 text-gray-500">
-                <p className="font-medium text-gray-700">No bookings yet</p>
-                <p className="text-sm mt-1">
-                  When someone pays for a slot via the blink, they’ll appear here with their details.
-                </p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-gray-100">
-                {bookings.map((b) => (
-                  <li
-                    key={b.id}
-                    className="py-4 first:pt-0 last:pb-0 space-y-2"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-medium text-gray-900">
-                        {formatMeetingDate(b.slot.startTime)} · {Number(b.amountSol).toFixed(2)} SOL
-                      </p>
-                      <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
-                        Paid
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600">
-                      Slot: {formatMeetingTime(b.slot.startTime)} – {formatMeetingTime(b.slot.endTime)}
                     </p>
-                    {b.slot.meetLink && (
-                      <a
-                        href={b.slot.meetLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-blue-600 hover:text-blue-700 underline inline-block"
-                      >
-                        Join meeting →
-                      </a>
-                    )}
-                    <p className="text-xs font-mono text-gray-500 truncate" title={b.payerWallet}>
-                      From: {b.payerWallet}
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total earnings</p>
+                    <p className="mt-1 text-2xl font-bold text-gray-900">
+                      {earnings.toFixed(2)} <span className="text-base font-semibold text-gray-500">SOL</span>
                     </p>
-                    {(b.name || b.email || b.callFor) && (
-                      <div className="text-sm text-gray-600 pt-1 border-t border-gray-100 mt-2">
-                        {b.name && <p><span className="text-gray-500">Name:</span> {b.name}</p>}
-                        {b.email && <p><span className="text-gray-500">Email:</span> {b.email}</p>}
-                        {b.callFor && <p><span className="text-gray-500">Purpose:</span> {b.callFor}</p>}
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {/* Upcoming meetings */}
-          <section className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8 mb-8">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Upcoming meetings
-            </h2>
-            {meetings.length === 0 ? (
-              <div className="text-center py-10 text-gray-500">
-                <p className="font-medium text-gray-700">No upcoming meetings</p>
-                <p className="text-sm mt-1">
-                  Booked meetings will appear here. Create slots and share the link to get bookings.
-                </p>
+                    <p className="text-xs text-gray-500 mt-0.5">From {totalBookings} booking{totalBookings !== 1 ? "s" : ""}</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Upcoming meetings</p>
+                    <p className="mt-1 text-2xl font-bold text-gray-900">{meetings.length}</p>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-3">Upcoming meetings</h3>
+                  {meetings.length === 0 ? (
+                    <p className="text-sm text-gray-500">No upcoming booked meetings.</p>
+                  ) : (
+                    <ul className="divide-y divide-gray-100">
+                      {meetings.map((slot) => (
+                        <li key={slot.id} className="py-3 first:pt-0 flex items-center justify-between gap-4">
+                          <div>
+                            <p className="font-medium text-gray-900">{formatMeetingDate(slot.startTime)}</p>
+                            <p className="text-sm text-gray-500">{formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)}</p>
+                          </div>
+                          {slot.meetLink && (
+                            <a href={slot.meetLink} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:text-blue-700 font-medium shrink-0">
+                              Join →
+                            </a>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
-            ) : (
-              <ul className="divide-y divide-gray-100">
-                {meetings.map((slot) => (
-                  <li
-                    key={slot.id}
-                    className="py-4 first:pt-0 last:pb-0 flex flex-wrap items-center justify-between gap-3"
-                  >
+            )}
+
+            {activeSection === "slots" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-1">My slots</h2>
+                  <p className="text-sm text-gray-500">Slots you created; share the blink link to get booked</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                  {mySlots.length === 0 ? (
+                    <div className="p-10 text-center text-gray-500">
+                      <p className="font-medium text-gray-700">No slots yet</p>
+                      <p className="text-sm mt-1">Create a slot to get a Solana blink link for booking.</p>
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-gray-100">
+                      {mySlots.map((slot) => (
+                        <li key={slot.id} className="p-5 flex flex-wrap items-center justify-between gap-4">
+                          <div>
+                            <p className="font-medium text-gray-900">{formatMeetingDate(slot.startTime)}</p>
+                            <p className="text-sm text-gray-500">
+                              {formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)} · {Number(slot.price).toFixed(2)} SOL
+                            </p>
+                            {slot.meetLink && (
+                              <a href={slot.meetLink} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:text-blue-700 mt-1 inline-block">
+                                Join meeting →
+                              </a>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {slot.status === "available" ? (
+                              <>
+                                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">Available</span>
+                                <button type="button" onClick={() => copyBlink(slot.id)} className="text-sm font-medium text-gray-700 hover:text-gray-900 underline">
+                                  Copy blink link
+                                </button>
+                              </>
+                            ) : (
+                              <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">Booked</span>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeSection === "bookings" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Payments & bookings</h2>
+                  <p className="text-sm text-gray-500">Payments received when someone books via your blink</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                  {bookings.length === 0 ? (
+                    <div className="p-10 text-center text-gray-500">
+                      <p className="font-medium text-gray-700">No bookings yet</p>
+                      <p className="text-sm mt-1">Share your blink link to receive bookings and payments.</p>
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-gray-100">
+                      {bookings.map((b) => (
+                        <li key={b.id} className="p-5 space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-medium text-gray-900">{formatMeetingDate(b.slot.startTime)} · {Number(b.amountSol).toFixed(2)} SOL</p>
+                            <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">Paid</span>
+                          </div>
+                          <p className="text-sm text-gray-600">Slot: {formatMeetingTime(b.slot.startTime)} – {formatMeetingTime(b.slot.endTime)}</p>
+                          {b.slot.meetLink && (
+                            <a href={b.slot.meetLink} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:text-blue-700 inline-block">
+                              Join meeting →
+                            </a>
+                          )}
+                          <p className="text-xs font-mono text-gray-500 truncate" title={b.payerWallet}>From: {b.payerWallet}</p>
+                          {(b.name || b.email || b.callFor) && (
+                            <div className="text-sm text-gray-600 pt-2 border-t border-gray-100">
+                              {b.name && <p><span className="text-gray-500">Name:</span> {b.name}</p>}
+                              {b.email && <p><span className="text-gray-500">Email:</span> {b.email}</p>}
+                              {b.callFor && <p><span className="text-gray-500">Purpose:</span> {b.callFor}</p>}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeSection === "create" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Create slot</h2>
+                  <p className="text-sm text-gray-500">Add a time slot and get a blink link to share</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-6 md:p-8 shadow-sm max-w-lg">
+                  <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                      <p className="font-medium text-gray-900">
-                        {formatMeetingDate(slot.startTime)}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)}
-                      </p>
-                      {slot.meetLink && (
-                        <a
-                          href={slot.meetLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-blue-600 hover:text-blue-700 underline mt-1 inline-block"
-                        >
-                          Join meeting →
-                        </a>
-                      )}
+                      <label htmlFor="startTime" className="block text-sm font-medium text-gray-700 mb-1.5">Start time</label>
+                      <input
+                        id="startTime"
+                        type="datetime-local"
+                        value={startTime}
+                        onChange={(e) => setStartTime(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+                      />
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
-                        Booked
-                      </span>
-                      <span className="font-semibold text-gray-900">
-                        {Number(slot.price).toFixed(2)} SOL
-                      </span>
+                    <div>
+                      <label htmlFor="endTime" className="block text-sm font-medium text-gray-700 mb-1.5">End time</label>
+                      <input
+                        id="endTime"
+                        type="datetime-local"
+                        value={endTime}
+                        onChange={(e) => setEndTime(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+                      />
                     </div>
-                  </li>
-                ))}
-              </ul>
+                    <div>
+                      <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1.5">Price (SOL)</label>
+                      <input
+                        id="price"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={creating}
+                      className="w-full sm:w-auto bg-gray-900 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-60 disabled:pointer-events-none"
+                    >
+                      {creating ? "Creating…" : "Create slot"}
+                    </button>
+                  </form>
+                </div>
+              </div>
             )}
-          </section>
-
-          {/* Earnings & stats */}
-          <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 mb-10">
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8">
-              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">
-                Wallet balance
-              </p>
-              <p className="text-3xl md:text-4xl font-bold text-gray-900">
-                {walletBalance != null ? (
-                  <>
-                    {walletBalance.toFixed(4)}{" "}
-                    <span className="text-lg font-semibold text-gray-500">SOL</span>
-                  </>
-                ) : (
-                  <span className="text-gray-400">—</span>
-                )}
-              </p>
-              <p className="text-sm text-gray-500 mt-2">
-                Creator wallet balance
-              </p>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8">
-              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">
-                Total earnings
-              </p>
-              <p className="text-3xl md:text-4xl font-bold text-gray-900">
-                {earnings.toFixed(2)} <span className="text-lg font-semibold text-gray-500">SOL</span>
-              </p>
-              <p className="text-sm text-gray-500 mt-2">
-                From {totalBookings} booked meeting{totalBookings !== 1 ? "s" : ""}
-              </p>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8">
-              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">
-                Upcoming booked
-              </p>
-              <p className="text-3xl md:text-4xl font-bold text-gray-900">
-                {meetings.length}
-              </p>
-              <p className="text-sm text-gray-500 mt-2">
-                Meeting{meetings.length !== 1 ? "s" : ""} in the future
-              </p>
-            </div>
-          </section>
-        </>
-      )}
-
-      {/* Create slot */}
-      <section className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8">
-        <h2 className="text-lg font-semibold text-gray-800 mb-5">
-          Create slot
-        </h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              htmlFor="startTime"
-              className="block text-sm font-medium text-gray-700 mb-1.5"
-            >
-              Start time
-            </label>
-            <input
-              id="startTime"
-              type="datetime-local"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="endTime"
-              className="block text-sm font-medium text-gray-700 mb-1.5"
-            >
-              End time
-            </label>
-            <input
-              id="endTime"
-              type="datetime-local"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="price"
-              className="block text-sm font-medium text-gray-700 mb-1.5"
-            >
-              Price (SOL)
-            </label>
-            <input
-              id="price"
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0.00"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={creating}
-            className="w-full sm:w-auto bg-gray-900 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors disabled:opacity-60 disabled:pointer-events-none"
-          >
-            {creating ? "Creating…" : "Create slot"}
-          </button>
-        </form>
-      </section>
+          </>
+        )}
     </div>
   );
 }

@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallets } from "@privy-io/react-auth/solana";
 import { WalletAuth } from "@/components/wallet-auth";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/dashboard/onboarding", label: "Profile" },
+const dashboardSections = [
+  { section: "overview", label: "Overview" },
+  { section: "slots", label: "My slots" },
+  { section: "bookings", label: "Payments & bookings" },
+  { section: "create", label: "Create slot" },
 ];
 
 export default function DashboardLayout({
@@ -19,6 +21,8 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const currentSection = pathname === "/dashboard" ? (searchParams.get("section") ?? "overview") : null;
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
   const [authChecked, setAuthChecked] = useState(false);
@@ -81,7 +85,7 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-gray-50">
       {/* Sidebar - white bg */}
       <aside className="w-56 shrink-0 bg-white border-r border-gray-200 shadow-sm flex flex-col">
         <div className="p-5 border-b border-gray-100">
@@ -90,22 +94,33 @@ export default function DashboardLayout({
           </Link>
         </div>
         <nav className="flex-1 p-3 space-y-0.5">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href;
+          {dashboardSections.map(({ section, label }) => {
+            const href = `/dashboard${section === "overview" ? "" : `?section=${section}`}`;
+            const isActive = pathname === "/dashboard" && currentSection === section;
             return (
               <Link
-                key={item.href}
-                href={item.href}
+                key={section}
+                href={href}
                 className={`block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   isActive
                     ? "bg-gray-100 text-gray-900"
                     : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                 }`}
               >
-                {item.label}
+                {label}
               </Link>
             );
           })}
+          <Link
+            href="/dashboard/onboarding"
+            className={`block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mt-1 ${
+              pathname === "/dashboard/onboarding"
+                ? "bg-gray-100 text-gray-900"
+                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+            }`}
+          >
+            Profile
+          </Link>
         </nav>
         <div className="p-3 border-t border-gray-100 space-y-2">
           <WalletAuth variant="sidebar" />

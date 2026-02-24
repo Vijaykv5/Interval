@@ -19,6 +19,7 @@ export async function GET() {
       wallet: c.wallet,
       profileImageUrl: c.profileImageUrl,
       bio: c.bio,
+      xAccount: c.xAccount,
       firstAvailableSlot: c.slots[0]
         ? { id: c.slots[0].id, price: c.slots[0].price }
         : null,
