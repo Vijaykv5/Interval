@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Press_Start_2P, Bebas_Neue } from "next/font/google";
 import localFont from "next/font/local";
+import { Toaster } from "sonner";
 import { PrivyProviders } from "@/components/privy-providers";
 import "./globals.css";
 
@@ -59,6 +60,20 @@ export default function RootLayout({
         <div className="bg-orbit-glow" aria-hidden />
         <div className="relative z-10 min-h-screen bg-transparent">
           <PrivyProviders>{children}</PrivyProviders>
+          <Toaster
+            position="bottom-right"
+            theme="dark"
+            className="interval-toaster"
+            toastOptions={{
+              classNames: {
+                toast: "interval-toast",
+                title: "interval-toast-title",
+                description: "interval-toast-description",
+                success: "interval-toast-success",
+                error: "interval-toast-error",
+              },
+            }}
+          />
         </div>
       </body>
     </html>

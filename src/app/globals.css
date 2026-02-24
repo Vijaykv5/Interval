@@ -104,3 +104,58 @@ h1, h2, h3, h4, h5, h6 {
   pointer-events: none;
 }
 
+/* Interval toaster – bottom right, branded (#ffd28e container, black text) */
+.interval-toaster [data-sonner-toaster] {
+  --normal-bg: #ffd28e;
+  --normal-border: rgba(0, 0, 0, 0.15);
+  --normal-text: #0a0a0a;
+  --success-bg: #ffd28e;
+  --success-border: rgba(0, 0, 0, 0.15);
+  --success-text: #0a0a0a;
+  --error-bg: #ffd28e;
+  --error-border: rgba(0, 0, 0, 0.15);
+  --error-text: #0a0a0a;
+}
+
+.interval-toast {
+  background: #ffd28e !important;
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+  font-family: var(--font-utendo), sans-serif !important;
+  padding: 14px 18px !important;
+}
+
+.interval-toast-success {
+  background: #ffd28e !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+}
+
+.interval-toast-success [data-icon] {
+  color: #0a0a0a !important;
+}
+
+.interval-toast-error {
+  background: #ffd28e !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+}
+
+.interval-toast-error [data-icon] {
+  color: #b91c1c !important;
+}
+
+.interval-toast-title {
+  color: #0a0a0a !important;
+  font-weight: 600 !important;
+  font-size: 0.95rem !important;
+}
+
+.interval-toast-description {
+  color: #171717 !important;
+  font-size: 0.875rem !important;
+  margin-top: 4px !important;
+  word-break: break-all !important;
+}
+

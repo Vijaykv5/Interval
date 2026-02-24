@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useWallets } from "@privy-io/react-auth/solana";
+import { toast } from "sonner";
 import { getDialBlinkUrl } from "@/lib/constants";
 
 type Slot = {
@@ -285,12 +286,16 @@ export default function Dashboard() {
           const dialUrl = getDialBlinkUrl(blinkUrl);
           try {
             await navigator.clipboard.writeText(dialUrl);
-            alert(`Slot created! Blink link copied to clipboard.\n\n${dialUrl}`);
+            toast.success("Slot created! Blink link copied to clipboard.", {
+              description: dialUrl,
+            });
           } catch {
-            alert(`Slot created! Copy the blink link below:\n\n${dialUrl}`);
+            toast.success("Slot created! Copy the blink link below.", {
+              description: dialUrl,
+            });
           }
         } else {
-          alert("Slot created!");
+          toast.success("Slot created!");
         }
         if (creator) {
           await refreshDashboard(creator.id);
@@ -341,9 +346,9 @@ export default function Dashboard() {
     const url = dialBlinkUrl(slotId);
     try {
       await navigator.clipboard.writeText(url);
-      alert("Blink link copied to clipboard!");
+      toast.success("Blink link copied to clipboard!");
     } catch {
-      alert(`Copy the link:\n\n${url}`);
+      toast.success("Copy the link", { description: url });
     }
   }
 

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallets } from "@privy-io/react-auth/solana";
 import { ProfilePhotoUpload } from "@/components/profile-photo-upload";
@@ -91,9 +92,9 @@ export default function ProfilePage() {
         const data = await res.json();
         if (res.ok) {
           setCreator(data);
-          alert("Profile updated.");
+          toast.success("Profile updated.");
         } else {
-          alert(data?.error ?? "Failed to update profile");
+          toast.error(data?.error ?? "Failed to update profile");
         }
       } else {
         const res = await fetch("/api/creator", {
@@ -105,7 +106,7 @@ export default function ProfilePage() {
         if (res.ok) {
           router.replace("/dashboard");
         } else {
-          alert(data?.error ?? "Failed to create profile");
+          toast.error(data?.error ?? "Failed to create profile");
         }
       }
     } finally {

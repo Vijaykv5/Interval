@@ -13,8 +13,6 @@
     "postinstall": "bunx prisma generate"
   },
   "dependencies": {
-    "@hpke/chacha20poly1305": "^1.7.1",
-    "@hpke/core": "^1.7.5",
     "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^7.4.1",
     "@privy-io/node": "^0.9.0",
@@ -27,7 +25,8 @@
     "prisma": "^7.4.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "resend": "^4.0.0"
+    "resend": "^4.0.0",
+    "sonner": "^2.0.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
