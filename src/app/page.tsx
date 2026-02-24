@@ -1,6 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { WalletAuth } from "@/components/wallet-auth";
+import { LandingCtas } from "@/components/landing-ctas";
+import { LandingOnboardingGate } from "@/components/landing-onboarding-gate";
+import { CursorGlow } from "@/components/cursor-glow";
 
 const CREATOR_CARD_TEMPLATES = [
   { src: "/images/6.png", alt: "Creator", accent: "var(--interval-card-rare)", price: "2 SOL", priceLabel: "/ book", description: "Book a 1:1 slot. Quick calls and AMAs." },
@@ -25,7 +28,9 @@ function getCardTransform(i: number, total: number) {
 
 export default function Home() {
   return (
-    <div className="min-h-screen h-screen max-h-screen flex flex-col text-white overflow-hidden">
+    <LandingOnboardingGate>
+    <div className="min-h-screen h-screen max-h-screen flex flex-col text-white overflow-hidden relative">
+      <CursorGlow />
       <header className="flex items-center justify-between px-6 py-4 shrink-0 w-full">
         <Link
           href="/"
@@ -43,32 +48,19 @@ export default function Home() {
       <section className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 pt-16 sm:pt-24 pb-12 sm:pb-16 text-center">
         <div className="max-w-2xl mx-auto">
           <h1
-            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl uppercase tracking-[0.08em] text-white mb-5"
-            style={{ fontFamily: "var(--font-bebas-neue)" }}
+            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl uppercase tracking-[0.08em] text-white mb-5 font-extrabold whitespace-nowrap"
+            style={{ fontFamily: "var(--font-archivo-condensed), sans-serif" }}
           >
             Book. <span style={{ color: "#ffd28e" }}>Schedule.</span> Win.
           </h1>
-          <p className="text-lg sm:text-xl md:text-2xl text-white/70 mb-8 leading-relaxed">
-            Book time with creators and founders on Solana.
+          <p
+            className="text-lg sm:text-xl md:text-2xl text-white/70 mb-8 whitespace-nowrap"
+            style={{ fontFamily: "var(--font-archivo-condensed), sans-serif" }}
+          >
+            Book time with your favorite creators and founders on Solana.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center flex-wrap">
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center justify-center px-7 py-4 rounded-xl font-semibold transition-all hover:opacity-95 hover:scale-[1.02] border-2 border-transparent shrink-0"
-              style={{
-                backgroundColor: "#ffd28e",
-                color: "#000",
-              }}
-            >
-              <span className="whitespace-nowrap">Are you a creator?</span>
-            </Link>
-            <Link
-              href="/explore"
-              className="inline-flex items-center justify-center px-7 py-4 rounded-xl font-semibold border-2 transition-all hover:scale-[1.02] hover:opacity-90 shrink-0"
-              style={{ borderColor: "#ffd28e", color: "#ffd28e", backgroundColor: "rgba(255, 210, 142, 0.12)" }}
-            >
-              <span className="whitespace-nowrap">Looking for creators?</span>
-            </Link>
+            <LandingCtas />
           </div>
         </div>
       </section>
@@ -132,5 +124,6 @@ export default function Home() {
         </div>
       </section>
     </div>
+    </LandingOnboardingGate>
   );
 }

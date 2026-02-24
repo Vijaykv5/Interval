@@ -32,6 +32,12 @@ const archivoCondensed = localFont({
   display: "swap",
 });
 
+const utendo = localFont({
+  src: "../../public/fonts/Utendo-Semibold.ttf",
+  variable: "--font-utendo",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Interval — Book time with creators on Solana",
   description: "Book time with creators and founders on Solana. Create slots or find a creator and schedule a meeting.",
@@ -45,7 +51,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${pressStart2P.variable} ${bebasNeue.variable} ${archivoCondensed.variable} antialiased min-h-screen bg-[#030305]`}
+        className={`${geistSans.variable} ${geistMono.variable} ${pressStart2P.variable} ${bebasNeue.variable} ${archivoCondensed.variable} ${utendo.variable} antialiased min-h-screen bg-[#030305]`}
       >
         {/* Ready to Entangle – stacked background layers */}
         <div className="bg-orbit-base" aria-hidden />

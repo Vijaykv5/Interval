@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallets } from "@privy-io/react-auth/solana";
 import { WalletAuth } from "@/components/wallet-auth";
+import { OnboardingModal } from "@/components/onboarding-modal";
 
 const dashboardSections = [
   { section: "overview", label: "Overview" },
@@ -26,6 +27,7 @@ export default function DashboardLayout({
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
   const [authChecked, setAuthChecked] = useState(false);
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
 
   const solanaWallet = wallets[0];
   const walletAddress = solanaWallet?.address ?? null;
@@ -57,11 +59,15 @@ export default function DashboardLayout({
         );
         if (cancelled) return;
         if (!res.ok) {
-          router.replace("/dashboard/onboarding");
+          setShowOnboardingModal(true);
+          setAuthChecked(true);
           return;
         }
       } catch {
-        if (!cancelled) router.replace("/dashboard/onboarding");
+        if (!cancelled) {
+          setShowOnboardingModal(true);
+          setAuthChecked(true);
+        }
         return;
       }
       setAuthChecked(true);
@@ -74,8 +80,8 @@ export default function DashboardLayout({
 
   if (!ready || (!isOnboardingPage && !authChecked)) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-gray-500">Loading…</div>
+      <div className="flex min-h-screen items-center justify-center bg-[#030305]">
+        <div className="text-white/60">Loading…</div>
       </div>
     );
   }
@@ -85,15 +91,15 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      {/* Sidebar - white bg */}
-      <aside className="w-56 shrink-0 bg-white border-r border-gray-200 shadow-sm flex flex-col">
-        <div className="p-5 border-b border-gray-100">
-          <Link href="/dashboard" className="font-semibold text-gray-800 text-lg tracking-tight">
+    <div className="flex min-h-screen bg-[#030305]">
+      {/* Sidebar — dark with accent active state */}
+      <aside className="w-60 shrink-0 flex flex-col border-r border-white/10 bg-gradient-to-b from-black/60 to-black/40">
+        <div className="p-5 border-b border-white/10">
+          <Link href="/dashboard" className="font-semibold text-xl tracking-tight" style={{ color: "#ffd28e" }}>
             Interval
           </Link>
         </div>
-        <nav className="flex-1 p-3 space-y-0.5">
+        <nav className="flex-1 p-3 space-y-1">
           {dashboardSections.map(({ section, label }) => {
             const href = `/dashboard${section === "overview" ? "" : `?section=${section}`}`;
             const isActive = pathname === "/dashboard" && currentSection === section;
@@ -101,11 +107,12 @@ export default function DashboardLayout({
               <Link
                 key={section}
                 href={href}
-                className={`block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`block px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                   isActive
-                    ? "bg-gray-100 text-gray-900"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    ? "bg-white/10 text-white border-l-2 pl-[14px]"
+                    : "text-white/70 hover:bg-white/5 hover:text-white border-l-2 border-transparent pl-4"
                 }`}
+                style={isActive ? { borderLeftColor: "#ffd28e" } : undefined}
               >
                 {label}
               </Link>
@@ -113,30 +120,40 @@ export default function DashboardLayout({
           })}
           <Link
             href="/dashboard/onboarding"
-            className={`block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mt-1 ${
+            className={`block px-4 py-3 rounded-xl text-sm font-medium transition-all mt-2 ${
               pathname === "/dashboard/onboarding"
-                ? "bg-gray-100 text-gray-900"
-                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                ? "bg-white/10 text-white border-l-2 pl-[14px]"
+                : "text-white/70 hover:bg-white/5 hover:text-white border-l-2 border-transparent pl-4"
             }`}
+            style={pathname === "/dashboard/onboarding" ? { borderLeftColor: "#ffd28e" } : undefined}
           >
             Profile
           </Link>
         </nav>
-        <div className="p-3 border-t border-gray-100 space-y-2">
+        <div className="p-3 border-t border-white/10">
           <WalletAuth variant="sidebar" />
-          <Link
-            href="/"
-            className="block px-3 py-2.5 rounded-lg text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
-          >
-            ← Back home
-          </Link>
         </div>
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-auto">
+      {/* Main content — subtle gradient for depth */}
+      <main className="flex-1 overflow-auto bg-gradient-to-br from-[#030305] via-[#0a0a0d] to-[#030305]">
         {children}
       </main>
+      {showOnboardingModal && walletAddress && (
+        <OnboardingModal
+          open={showOnboardingModal}
+          walletAddress={walletAddress}
+          closable={false}
+          onSuccess={() => {
+            setShowOnboardingModal(false);
+            router.replace("/dashboard");
+          }}
+          onClose={() => {
+            setShowOnboardingModal(false);
+            router.replace("/dashboard/onboarding");
+          }}
+        />
+      )}
     </div>
   );
 }

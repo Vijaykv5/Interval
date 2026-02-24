@@ -1,8 +1,24 @@
 @import "tailwindcss";
 
-/* Default platform font: Archivo Condensed (headline stays Bebas Neue where set) */
+/* Utendo: descriptions and body text */
 body {
+  font-family: var(--font-utendo), sans-serif;
+}
+
+/* Archivo Condensed: main headings */
+h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-archivo-condensed), sans-serif;
+}
+
+/* Optional: use main heading font on non-heading elements */
+.font-heading {
+  font-family: var(--font-archivo-condensed), sans-serif;
+}
+
+/* Cursor-following light orange glow (updated by CursorGlow) */
+:root {
+  --cursor-x: 50vw;
+  --cursor-y: 50vh;
 }
 
 /* Summit Rush color palette (dashboard etc.) */

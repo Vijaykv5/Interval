@@ -22,9 +22,10 @@ export function PrivyProviders({ children }: { children: ReactNode }) {
           },
         },
         appearance: {
+          theme: "dark",
           walletChainType: "solana-only",
         },
-        loginMethods: ["wallet", "email"],
+        loginMethods: ["google"],
       }}
     >
       {children}

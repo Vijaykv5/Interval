@@ -32,17 +32,33 @@ const headers = createActionHeaders({
 function disabledAction(
   _req: Request,
   description: string,
-  label: string
+  label: string,
+  icon = ACTION_ICON_FALLBACK
 ): Response {
   const payload: ActionGetResponse = {
     type: "action",
-    icon: ACTION_ICON_FALLBACK,
+    icon,
     title: "Book meeting slot",
     description,
     label,
     disabled: true,
   };
   return Response.json(payload, { status: 200, headers });
+}
+
+/** Icon URL for blink: use our icon endpoint (serves image with CORS) so Dialect can load it. */
+function getActionIcon(
+  slotId: string,
+  slot: { creator: { profileImageUrl: string | null } } | null,
+  baseUrl: string
+): string {
+  const isPublicBase =
+    baseUrl.startsWith("https://") && !baseUrl.includes("localhost");
+  if (!isPublicBase || !slot) return ACTION_ICON_FALLBACK;
+  const url = slot.creator.profileImageUrl?.trim();
+  if (!url) return ACTION_ICON_FALLBACK;
+  const origin = baseUrl.trim().replace(/\/$/, "");
+  return `${origin}/api/action/book/icon?slotId=${encodeURIComponent(slotId)}`;
 }
 
 export async function GET(req: Request) {
@@ -72,10 +88,16 @@ export async function GET(req: Request) {
     }
 
     if (slot.status !== "available") {
+      const requestUrlUnav = new URL(req.url);
+      const baseUrlUnav = (
+        process.env.NEXT_PUBLIC_APP_URL ||
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+        requestUrlUnav.origin
+      ).trim().replace(/\/$/, "");
       return Response.json(
         {
           type: "action",
-          icon: ACTION_ICON_FALLBACK,
+          icon: getActionIcon(slotId, slot, baseUrlUnav),
           title: "Book meeting slot",
           description: `This slot is no longer available (${slot.status}).`,
           label: "Slot unavailable",
@@ -102,15 +124,16 @@ export async function GET(req: Request) {
     const description = `Book a call with ${slot.creator.username}. ${start} – ${end}. Price: ${priceLabel} SOL.`;
 
     const requestUrl = new URL(req.url);
-    const baseUrl =
+    const baseUrl = (
       process.env.NEXT_PUBLIC_APP_URL ||
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
-      requestUrl.origin;
-    const actionHref = new URL(requestUrl.pathname + requestUrl.search, baseUrl).toString();
+      requestUrl.origin
+    ).trim().replace(/\/$/, "");
+    const actionHref = `${baseUrl}${requestUrl.pathname}${requestUrl.search}`;
 
     const payload: ActionGetResponse = {
       type: "action",
-      icon: ACTION_ICON_FALLBACK,
+      icon: getActionIcon(slotId, slot, baseUrl),
       title: "Book meeting slot",
       description,
       label: `Book for ${priceLabel} SOL`,

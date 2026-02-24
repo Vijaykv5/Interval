@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useWallets } from "@privy-io/react-auth/solana";
+import { getDialBlinkUrl } from "@/lib/constants";
 
 type Slot = {
   id: string;
@@ -58,15 +60,51 @@ function formatMeetingTime(iso: string) {
   });
 }
 
+/** Returns YYYY-MM-DD for today (local) */
+function todayLocal(): string {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+/** Returns YYYY-MM-DDTHH:mm for now, rounded up to next 15 min (local) */
+function nowRoundedUp15(): string {
+  const d = new Date();
+  const mins = d.getMinutes();
+  const rounded = Math.ceil(mins / 15) * 15;
+  d.setMinutes(rounded === 60 ? 0 : rounded);
+  if (rounded === 60) d.setHours(d.getHours() + 1);
+  d.setSeconds(0, 0);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
+
+/** Add minutes to a datetime-local string (YYYY-MM-DDTHH:mm), return same format */
+function addMinutesToDatetimeLocal(dt: string, minutes: number): string {
+  const d = new Date(dt);
+  d.setMinutes(d.getMinutes() + minutes);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
+
 export default function Dashboard() {
   const { wallets } = useWallets();
   const [creator, setCreator] = useState<Creator | null>(null);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [price, setPrice] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   const solanaWallet = wallets[0];
   const walletAddress = solanaWallet?.address ?? null;
@@ -198,8 +236,30 @@ export default function Dashboard() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setCreateError(null);
     if (!walletAddress) {
-      alert("Connect your wallet first.");
+      setCreateError("Connect your wallet first.");
+      return;
+    }
+    const start = startTime.trim();
+    const end = endTime.trim();
+    const priceNum = parseFloat(price);
+    if (!start) {
+      setCreateError("Please pick a start date and time.");
+      return;
+    }
+    if (!end) {
+      setCreateError("Please pick an end date and time, or use a duration (15 min, 30 min, 1 hour).");
+      return;
+    }
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    if (endDate.getTime() <= startDate.getTime()) {
+      setCreateError("End time must be after start time.");
+      return;
+    }
+    if (Number.isNaN(priceNum) || priceNum < 0) {
+      setCreateError("Please enter a valid price (0 or more SOL).");
       return;
     }
     setCreating(true);
@@ -209,9 +269,9 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           wallet: walletAddress,
-          startTime,
-          endTime,
-          price: parseFloat(price),
+          startTime: startDate.toISOString(),
+          endTime: endDate.toISOString(),
+          price: priceNum,
         }),
       });
       const data = await res.json();
@@ -219,13 +279,15 @@ export default function Dashboard() {
         setStartTime("");
         setEndTime("");
         setPrice("");
+        setCreateError(null);
         const blinkUrl = data.blinkUrl as string | undefined;
         if (blinkUrl) {
+          const dialUrl = getDialBlinkUrl(blinkUrl);
           try {
-            await navigator.clipboard.writeText(blinkUrl);
-            alert(`Slot created! Blink link copied to clipboard.\n\n${blinkUrl}`);
+            await navigator.clipboard.writeText(dialUrl);
+            alert(`Slot created! Blink link copied to clipboard.\n\n${dialUrl}`);
           } catch {
-            alert(`Slot created! Copy the blink link below:\n\n${blinkUrl}`);
+            alert(`Slot created! Copy the blink link below:\n\n${dialUrl}`);
           }
         } else {
           alert("Slot created!");
@@ -234,10 +296,24 @@ export default function Dashboard() {
           await refreshDashboard(creator.id);
         }
       } else {
-        alert(data?.error ?? "Failed to create slot");
+        setCreateError(data?.error ?? "Failed to create slot");
       }
+    } catch {
+      setCreateError("Something went wrong. Please try again.");
     } finally {
       setCreating(false);
+    }
+  }
+
+  function applyDuration(minutes: 15 | 30 | 60) {
+    if (startTime) {
+      setEndTime(addMinutesToDatetimeLocal(startTime, minutes));
+      setCreateError(null);
+    } else {
+      const start = nowRoundedUp15();
+      setStartTime(start);
+      setEndTime(addMinutesToDatetimeLocal(start, minutes));
+      setCreateError(null);
     }
   }
 
@@ -257,8 +333,12 @@ export default function Dashboard() {
     return `${window.location.origin}/api/action/book?slotId=${slotId}`;
   }
 
+  function dialBlinkUrl(slotId: string) {
+    return getDialBlinkUrl(slotBlinkUrl(slotId));
+  }
+
   async function copyBlink(slotId: string) {
-    const url = slotBlinkUrl(slotId);
+    const url = dialBlinkUrl(slotId);
     try {
       await navigator.clipboard.writeText(url);
       alert("Blink link copied to clipboard!");
@@ -268,101 +348,119 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-6 md:p-8 max-w-4xl">
+    <div className="p-6 md:p-10 w-full text-white">
         {!walletAddress && (
-          <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+          <div className="mb-6 p-4 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-sm">
             Connect your wallet in the sidebar to create slots and see your dashboard.
           </div>
         )}
 
         {loading ? (
           <div className="space-y-6">
-            <div className="h-32 rounded-xl bg-gray-100 animate-pulse" />
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="h-24 rounded-xl bg-gray-100 animate-pulse" />
-              <div className="h-24 rounded-xl bg-gray-100 animate-pulse" />
-              <div className="h-24 rounded-xl bg-gray-100 animate-pulse" />
+            <div className="h-8 w-48 rounded-lg bg-white/10 animate-pulse" />
+            <div className="grid gap-5 sm:grid-cols-3">
+              <div className="h-28 rounded-2xl bg-white/10 animate-pulse" />
+              <div className="h-28 rounded-2xl bg-white/10 animate-pulse" />
+              <div className="h-28 rounded-2xl bg-white/10 animate-pulse" />
             </div>
           </div>
         ) : (
           <>
             {activeSection === "overview" && (
-              <div className="space-y-6">
+              <div className="space-y-8">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Overview</h2>
-                  <p className="text-sm text-gray-500">Your stats at a glance</p>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">Overview</h2>
+                  <p className="text-sm text-white/50 mt-1">Your stats at a glance</p>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Wallet balance</p>
-                    <p className="mt-1 text-2xl font-bold text-gray-900">
+                <div className="grid gap-5 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-6 overflow-hidden relative group hover:border-white/15 transition-colors">
+                    <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
+                    <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest">Wallet balance</p>
+                    <p className="mt-3 text-2xl font-bold text-white tabular-nums">
                       {walletBalance != null ? (
-                        <>{walletBalance.toFixed(4)} <span className="text-base font-semibold text-gray-500">SOL</span></>
+                        <>{walletBalance.toFixed(4)} <span className="text-lg font-semibold" style={{ color: "#ffd28e" }}>SOL</span></>
                       ) : (
-                        <span className="text-gray-400">—</span>
+                        <span className="text-white/40">—</span>
                       )}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total earnings</p>
-                    <p className="mt-1 text-2xl font-bold text-gray-900">
-                      {earnings.toFixed(2)} <span className="text-base font-semibold text-gray-500">SOL</span>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-6 overflow-hidden relative group hover:border-white/15 transition-colors">
+                    <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
+                    <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest">Total earnings</p>
+                    <p className="mt-3 text-2xl font-bold text-white tabular-nums">
+                      {earnings.toFixed(2)} <span className="text-lg font-semibold" style={{ color: "#ffd28e" }}>SOL</span>
                     </p>
-                    <p className="text-xs text-gray-500 mt-0.5">From {totalBookings} booking{totalBookings !== 1 ? "s" : ""}</p>
+                    <p className="text-xs text-white/45 mt-1">From {totalBookings} booking{totalBookings !== 1 ? "s" : ""}</p>
                   </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Upcoming meetings</p>
-                    <p className="mt-1 text-2xl font-bold text-gray-900">{meetings.length}</p>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-6 overflow-hidden relative group hover:border-white/15 transition-colors">
+                    <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
+                    <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest">Upcoming meetings</p>
+                    <p className="mt-3 text-2xl font-bold text-white tabular-nums">{meetings.length}</p>
                   </div>
                 </div>
-                <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-                  <h3 className="text-sm font-semibold text-gray-800 mb-3">Upcoming meetings</h3>
-                  {meetings.length === 0 ? (
-                    <p className="text-sm text-gray-500">No upcoming booked meetings.</p>
-                  ) : (
-                    <ul className="divide-y divide-gray-100">
-                      {meetings.map((slot) => (
-                        <li key={slot.id} className="py-3 first:pt-0 flex items-center justify-between gap-4">
-                          <div>
-                            <p className="font-medium text-gray-900">{formatMeetingDate(slot.startTime)}</p>
-                            <p className="text-sm text-gray-500">{formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)}</p>
-                          </div>
-                          {slot.meetLink && (
-                            <a href={slot.meetLink} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:text-blue-700 font-medium shrink-0">
-                              Join →
-                            </a>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm overflow-hidden">
+                  <div className="p-5 border-b border-white/10">
+                    <h3 className="text-base font-semibold text-white">Upcoming meetings</h3>
+                  </div>
+                  <div className="p-6">
+                    {meetings.length === 0 ? (
+                      <div className="text-center py-8">
+                        <p className="text-white/50 text-sm">No upcoming booked meetings.</p>
+                        <p className="text-white/35 text-xs mt-1">When someone books a slot, it will show here.</p>
+                        <Link
+                          href="/dashboard?section=create"
+                          className="inline-block mt-4 px-4 py-2 rounded-xl text-sm font-medium text-black hover:opacity-90 transition-opacity"
+                          style={{ backgroundColor: "#ffd28e" }}
+                        >
+                          Create a slot
+                        </Link>
+                      </div>
+                    ) : (
+                      <ul className="divide-y divide-white/10">
+                        {meetings.map((slot) => (
+                          <li key={slot.id} className="py-4 first:pt-0 flex items-center justify-between gap-4">
+                            <div>
+                              <p className="font-medium text-white">{formatMeetingDate(slot.startTime)}</p>
+                              <p className="text-sm text-white/50">{formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)}</p>
+                            </div>
+                            {slot.meetLink && (
+                              <a href={slot.meetLink} target="_blank" rel="noopener noreferrer" className="text-sm font-medium shrink-0 hover:opacity-90 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 transition-colors" style={{ color: "#ffd28e" }}>
+                                Join →
+                              </a>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
 
             {activeSection === "slots" && (
-              <div className="space-y-6">
+              <div className="space-y-8">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-1">My slots</h2>
-                  <p className="text-sm text-gray-500">Slots you created; share the blink link to get booked</p>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">My slots</h2>
+                  <p className="text-sm text-white/50 mt-1">Slots you created; share the blink link to get booked</p>
                 </div>
-                <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm overflow-hidden">
                   {mySlots.length === 0 ? (
-                    <div className="p-10 text-center text-gray-500">
-                      <p className="font-medium text-gray-700">No slots yet</p>
+                    <div className="p-12 text-center text-white/50">
+                      <p className="font-medium text-white/80">No slots yet</p>
                       <p className="text-sm mt-1">Create a slot to get a Solana blink link for booking.</p>
+                      <Link href="/dashboard?section=create" className="inline-block mt-4 px-4 py-2 rounded-xl text-sm font-medium text-black" style={{ backgroundColor: "#ffd28e" }}>Create slot</Link>
                     </div>
                   ) : (
-                    <ul className="divide-y divide-gray-100">
+                    <ul className="divide-y divide-white/10">
                       {mySlots.map((slot) => (
-                        <li key={slot.id} className="p-5 flex flex-wrap items-center justify-between gap-4">
+                        <li key={slot.id} className="p-6 flex flex-wrap items-center justify-between gap-4">
                           <div>
-                            <p className="font-medium text-gray-900">{formatMeetingDate(slot.startTime)}</p>
-                            <p className="text-sm text-gray-500">
-                              {formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)} · {Number(slot.price).toFixed(2)} SOL
+                            <p className="font-medium text-white">{formatMeetingDate(slot.startTime)}</p>
+                            <p className="text-sm text-white/60">
+                              {formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)} · <span style={{ color: "#ffd28e" }}>{Number(slot.price).toFixed(2)} SOL</span>
                             </p>
                             {slot.meetLink && (
-                              <a href={slot.meetLink} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:text-blue-700 mt-1 inline-block">
+                              <a href={slot.meetLink} target="_blank" rel="noopener noreferrer" className="text-sm mt-1 inline-block hover:opacity-90" style={{ color: "#ffd28e" }}>
                                 Join meeting →
                               </a>
                             )}
@@ -370,13 +468,22 @@ export default function Dashboard() {
                           <div className="flex items-center gap-3">
                             {slot.status === "available" ? (
                               <>
-                                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">Available</span>
-                                <button type="button" onClick={() => copyBlink(slot.id)} className="text-sm font-medium text-gray-700 hover:text-gray-900 underline">
-                                  Copy blink link
+                                <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90">Available</span>
+                                <a
+                                  href={dialBlinkUrl(slot.id)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm font-medium text-white/80 hover:text-white underline"
+                                  style={{ color: "#ffd28e" }}
+                                >
+                                  Open blink to book →
+                                </a>
+                                <button type="button" onClick={() => copyBlink(slot.id)} className="text-sm font-medium text-white/60 hover:text-white underline">
+                                  Copy link
                                 </button>
                               </>
                             ) : (
-                              <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">Booked</span>
+                              <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90">Booked</span>
                             )}
                           </div>
                         </li>
@@ -388,39 +495,33 @@ export default function Dashboard() {
             )}
 
             {activeSection === "bookings" && (
-              <div className="space-y-6">
+              <div className="space-y-8">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Payments & bookings</h2>
-                  <p className="text-sm text-gray-500">Payments received when someone books via your blink</p>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">Payments & bookings</h2>
+                  <p className="text-sm text-white/50 mt-1">Payments received when someone books via your blink</p>
                 </div>
-                <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm overflow-hidden">
                   {bookings.length === 0 ? (
-                    <div className="p-10 text-center text-gray-500">
-                      <p className="font-medium text-gray-700">No bookings yet</p>
+                    <div className="p-12 text-center text-white/50">
+                      <p className="font-medium text-white/80">No bookings yet</p>
                       <p className="text-sm mt-1">Share your blink link to receive bookings and payments.</p>
                     </div>
                   ) : (
-                    <ul className="divide-y divide-gray-100">
+                    <ul className="divide-y divide-white/10">
                       {bookings.map((b) => (
-                        <li key={b.id} className="p-5 space-y-2">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="font-medium text-gray-900">{formatMeetingDate(b.slot.startTime)} · {Number(b.amountSol).toFixed(2)} SOL</p>
-                            <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">Paid</span>
+                        <li
+                          key={b.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setSelectedBooking(b)}
+                          onKeyDown={(e) => e.key === "Enter" && setSelectedBooking(b)}
+                          className="p-5 flex flex-wrap items-center justify-between gap-4 cursor-pointer hover:bg-white/5 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <p className="font-medium text-white">{formatMeetingDate(b.slot.startTime)}</p>
+                            <p className="text-sm" style={{ color: "#ffd28e" }}>{Number(b.amountSol).toFixed(2)} SOL</p>
                           </div>
-                          <p className="text-sm text-gray-600">Slot: {formatMeetingTime(b.slot.startTime)} – {formatMeetingTime(b.slot.endTime)}</p>
-                          {b.slot.meetLink && (
-                            <a href={b.slot.meetLink} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:text-blue-700 inline-block">
-                              Join meeting →
-                            </a>
-                          )}
-                          <p className="text-xs font-mono text-gray-500 truncate" title={b.payerWallet}>From: {b.payerWallet}</p>
-                          {(b.name || b.email || b.callFor) && (
-                            <div className="text-sm text-gray-600 pt-2 border-t border-gray-100">
-                              {b.name && <p><span className="text-gray-500">Name:</span> {b.name}</p>}
-                              {b.email && <p><span className="text-gray-500">Email:</span> {b.email}</p>}
-                              {b.callFor && <p><span className="text-gray-500">Purpose:</span> {b.callFor}</p>}
-                            </div>
-                          )}
+                          <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90">Paid</span>
                         </li>
                       ))}
                     </ul>
@@ -429,36 +530,143 @@ export default function Dashboard() {
               </div>
             )}
 
-            {activeSection === "create" && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Create slot</h2>
-                  <p className="text-sm text-gray-500">Add a time slot and get a blink link to share</p>
-                </div>
-                <div className="rounded-xl border border-gray-200 bg-white p-6 md:p-8 shadow-sm max-w-lg">
-                  <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Booking detail slide-over panel */}
+            {selectedBooking && (
+              <>
+                <div
+                  className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+                  style={{ animation: "fadeIn 0.25s ease-out" }}
+                  aria-hidden
+                  onClick={() => setSelectedBooking(null)}
+                />
+                <div
+                  className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-[#0d0d0f] border-l border-white/10 shadow-2xl z-50 flex flex-col"
+                  style={{ animation: "slideInFromRight 0.3s ease-out" }}
+                >
+                  <style>{`@keyframes fadeIn{from{opacity:0}to{opacity:1}}@keyframes slideInFromRight{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}`}</style>
+                  <div className="p-5 border-b border-white/10 flex items-center justify-between shrink-0">
+                    <h3 className="text-lg font-semibold text-white">Booking details</h3>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBooking(null)}
+                      className="p-2 rounded-lg text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                      aria-label="Close"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="p-5 overflow-y-auto flex-1 space-y-4">
                     <div>
-                      <label htmlFor="startTime" className="block text-sm font-medium text-gray-700 mb-1.5">Start time</label>
+                      <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-1">Date & amount</p>
+                      <p className="text-white">{formatMeetingDate(selectedBooking.slot.startTime)} · <span style={{ color: "#ffd28e" }}>{Number(selectedBooking.amountSol).toFixed(2)} SOL</span></p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-1">Slot</p>
+                      <p className="text-white/90">{formatMeetingTime(selectedBooking.slot.startTime)} – {formatMeetingTime(selectedBooking.slot.endTime)}</p>
+                    </div>
+                    {selectedBooking.slot.meetLink && (
+                      <a
+                        href={selectedBooking.slot.meetLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block px-4 py-2 rounded-xl text-sm font-medium text-black hover:opacity-90"
+                        style={{ backgroundColor: "#ffd28e" }}
+                      >
+                        Join meeting →
+                      </a>
+                    )}
+                    <div>
+                      <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-1">From</p>
+                      <p className="text-sm font-mono text-white/80 break-all">{selectedBooking.payerWallet}</p>
+                    </div>
+                    {selectedBooking.name && (
+                      <div>
+                        <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-1">Name</p>
+                        <p className="text-white/90">{selectedBooking.name}</p>
+                      </div>
+                    )}
+                    {selectedBooking.email && (
+                      <div>
+                        <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-1">Email</p>
+                        <p className="text-white/90">{selectedBooking.email}</p>
+                      </div>
+                    )}
+                    {selectedBooking.callFor && (
+                      <div>
+                        <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-1">Purpose</p>
+                        <p className="text-white/90">{selectedBooking.callFor}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {activeSection === "create" && (
+              <div className="space-y-8">
+                <div>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">Create slot</h2>
+                  <p className="text-sm text-white/50 mt-1">Add a time slot and get a blink link to share with anyone.</p>
+                </div>
+                <div className="relative rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm overflow-hidden max-w-lg">
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
+                  <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-6">
+                    {createError && (
+                      <div className="rounded-xl bg-red-500/15 border border-red-400/30 px-4 py-3 text-sm text-red-200 flex items-start gap-2">
+                        <span className="shrink-0 mt-0.5" aria-hidden>⚠</span>
+                        <span>{createError}</span>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <label htmlFor="startTime" className="block text-sm font-medium text-white/90">Start date & time</label>
                       <input
                         id="startTime"
                         type="datetime-local"
                         value={startTime}
-                        onChange={(e) => setStartTime(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+                        min={todayLocal() + "T00:00"}
+                        onChange={(e) => {
+                          setStartTime(e.target.value);
+                          setCreateError(null);
+                        }}
+                        className="w-full rounded-xl border border-white/20 bg-black/40 px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#ffd28e]/50 focus:border-[#ffd28e]/40 transition-colors [color-scheme:dark]"
                       />
+                      <p className="text-xs text-white/40">When your slot begins</p>
                     </div>
-                    <div>
-                      <label htmlFor="endTime" className="block text-sm font-medium text-gray-700 mb-1.5">End time</label>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-white/90">Duration</label>
+                      <div className="flex flex-wrap gap-2">
+                        {([15, 30, 60] as const).map((mins) => (
+                          <button
+                            key={mins}
+                            type="button"
+                            onClick={() => applyDuration(mins)}
+                            className="px-5 py-3 rounded-xl border border-white/20 bg-white/5 text-white/90 hover:bg-white/10 hover:border-[#ffd28e]/30 hover:text-white transition-all text-sm font-medium min-w-[4.5rem]"
+                          >
+                            {mins === 60 ? "1 hour" : `${mins} min`}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-white/40">Sets end time from start</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="endTime" className="block text-sm font-medium text-white/90">End date & time</label>
                       <input
                         id="endTime"
                         type="datetime-local"
                         value={endTime}
-                        onChange={(e) => setEndTime(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+                        min={startTime || todayLocal() + "T00:00"}
+                        onChange={(e) => {
+                          setEndTime(e.target.value);
+                          setCreateError(null);
+                        }}
+                        className="w-full rounded-xl border border-white/20 bg-black/40 px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#ffd28e]/50 focus:border-[#ffd28e]/40 transition-colors [color-scheme:dark]"
                       />
+                      <p className="text-xs text-white/40">Or edit manually after picking duration</p>
                     </div>
-                    <div>
-                      <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1.5">Price (SOL)</label>
+                    <div className="pt-2 border-t border-white/10">
+                      <label htmlFor="price" className="block text-sm font-medium text-white/90 mb-2">Price (SOL)</label>
                       <input
                         id="price"
                         type="number"
@@ -467,13 +675,14 @@ export default function Dashboard() {
                         placeholder="0.00"
                         value={price}
                         onChange={(e) => setPrice(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+                        className="w-full rounded-xl border border-white/20 bg-black/40 px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#ffd28e]/50 focus:border-[#ffd28e]/40 transition-colors"
                       />
                     </div>
                     <button
                       type="submit"
                       disabled={creating}
-                      className="w-full sm:w-auto bg-gray-900 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-60 disabled:pointer-events-none"
+                      className="w-full px-5 py-3.5 rounded-xl font-semibold text-black focus:outline-none focus:ring-2 focus:ring-[#ffd28e] focus:ring-offset-2 focus:ring-offset-[#030305] disabled:opacity-60 disabled:pointer-events-none hover:opacity-95 transition-opacity"
+                      style={{ backgroundColor: "#ffd28e" }}
                     >
                       {creating ? "Creating…" : "Create slot"}
                     </button>
