@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useWallets } from "@privy-io/react-auth/solana";
 
 type Slot = {
@@ -9,6 +9,7 @@ type Slot = {
   endTime: string;
   price: number;
   status: string;
+  meetLink?: string | null;
 };
 
 type Creator = {
@@ -35,6 +36,7 @@ type DashboardData = {
   totalBookings: number;
   mySlots: Slot[];
   bookings: Booking[];
+  walletBalance: number | null;
 };
 
 function formatMeetingDate(iso: string) {
@@ -68,6 +70,28 @@ export default function Dashboard() {
   const solanaWallet = wallets[0];
   const walletAddress = solanaWallet?.address ?? null;
 
+  const refreshDashboard = useCallback(async (creatorId: string, showLoading = false) => {
+    if (showLoading) setLoading(true);
+    try {
+      const dashRes = await fetch(
+        `/api/dashboard?creatorId=${encodeURIComponent(creatorId)}`
+      );
+      if (dashRes.ok) {
+        const data = await dashRes.json();
+        setDashboard({
+          ...data,
+          mySlots: data.mySlots ?? [],
+          bookings: data.bookings ?? [],
+          walletBalance: data.walletBalance ?? null,
+        });
+      }
+    } catch {
+      // Silently ignore refresh errors to avoid disrupting UX
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!walletAddress) {
       setLoading(false);
@@ -77,6 +101,7 @@ export default function Dashboard() {
         totalBookings: 0,
         mySlots: [],
         bookings: [],
+        walletBalance: null,
       });
       return;
     }
@@ -95,6 +120,7 @@ export default function Dashboard() {
               totalBookings: 0,
               mySlots: [],
               bookings: [],
+              walletBalance: null,
             });
           }
           return;
@@ -113,6 +139,7 @@ export default function Dashboard() {
             ...data,
             mySlots: data.mySlots ?? [],
             bookings: data.bookings ?? [],
+            walletBalance: data.walletBalance ?? null,
           });
         } else {
           setDashboard({
@@ -121,6 +148,7 @@ export default function Dashboard() {
             totalBookings: 0,
             mySlots: [],
             bookings: [],
+            walletBalance: null,
           });
         }
       } catch {
@@ -131,6 +159,7 @@ export default function Dashboard() {
             totalBookings: 0,
             mySlots: [],
             bookings: [],
+            walletBalance: null,
           });
         }
       } finally {
@@ -142,6 +171,29 @@ export default function Dashboard() {
       cancelled = true;
     };
   }, [walletAddress]);
+
+  // Auto-refresh: poll every 5s + refetch when tab becomes visible
+  useEffect(() => {
+    if (!creator?.id) return;
+
+    const interval = setInterval(() => {
+      refreshDashboard(creator.id);
+    }, 5000);
+
+    const onFocus = () => refreshDashboard(creator.id);
+
+    window.addEventListener("focus", onFocus);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") onFocus();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [creator?.id, refreshDashboard]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -178,17 +230,7 @@ export default function Dashboard() {
           alert("Slot created!");
         }
         if (creator) {
-          const refresh = await fetch(
-            `/api/dashboard?creatorId=${encodeURIComponent(creator.id)}`
-          );
-          if (refresh.ok) {
-            const refreshed = await refresh.json();
-            setDashboard({
-              ...refreshed,
-              mySlots: refreshed.mySlots ?? [],
-              bookings: refreshed.bookings ?? [],
-            });
-          }
+          await refreshDashboard(creator.id);
         }
       } else {
         alert(data?.error ?? "Failed to create slot");
@@ -204,6 +246,7 @@ export default function Dashboard() {
   const bookings = dashboard?.bookings ?? [];
   const earnings = dashboard?.earnings ?? 0;
   const totalBookings = dashboard?.totalBookings ?? 0;
+  const walletBalance = dashboard?.walletBalance ?? null;
 
   function slotBlinkUrl(slotId: string) {
     if (typeof window === "undefined") return "";
@@ -274,6 +317,16 @@ export default function Dashboard() {
                       <p className="text-sm text-gray-500">
                         {formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)} · {Number(slot.price).toFixed(2)} SOL
                       </p>
+                      {slot.meetLink && (
+                        <a
+                          href={slot.meetLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:text-blue-700 underline mt-1 inline-block"
+                        >
+                          Join meeting →
+                        </a>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
                       {slot.status === "available" ? (
@@ -331,6 +384,16 @@ export default function Dashboard() {
                     <p className="text-sm text-gray-600">
                       Slot: {formatMeetingTime(b.slot.startTime)} – {formatMeetingTime(b.slot.endTime)}
                     </p>
+                    {b.slot.meetLink && (
+                      <a
+                        href={b.slot.meetLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-blue-600 hover:text-blue-700 underline inline-block"
+                      >
+                        Join meeting →
+                      </a>
+                    )}
                     <p className="text-xs font-mono text-gray-500 truncate" title={b.payerWallet}>
                       From: {b.payerWallet}
                     </p>
@@ -373,6 +436,16 @@ export default function Dashboard() {
                       <p className="text-sm text-gray-500">
                         {formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)}
                       </p>
+                      {slot.meetLink && (
+                        <a
+                          href={slot.meetLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:text-blue-700 underline mt-1 inline-block"
+                        >
+                          Join meeting →
+                        </a>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
@@ -389,7 +462,25 @@ export default function Dashboard() {
           </section>
 
           {/* Earnings & stats */}
-          <section className="grid gap-6 sm:grid-cols-2 mb-10">
+          <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 mb-10">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8">
+              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">
+                Wallet balance
+              </p>
+              <p className="text-3xl md:text-4xl font-bold text-gray-900">
+                {walletBalance != null ? (
+                  <>
+                    {walletBalance.toFixed(4)}{" "}
+                    <span className="text-lg font-semibold text-gray-500">SOL</span>
+                  </>
+                ) : (
+                  <span className="text-gray-400">—</span>
+                )}
+              </p>
+              <p className="text-sm text-gray-500 mt-2">
+                Creator wallet balance
+              </p>
+            </div>
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8">
               <p className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">
                 Total earnings

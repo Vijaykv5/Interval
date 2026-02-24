@@ -25,6 +25,7 @@ model Slot {
   endTime   DateTime
   price     Float
   status    String   @default("available")
+  meetLink  String?
   booking   Booking?
 }
 
@@ -40,5 +41,6 @@ model Booking {
   email       String?
   callFor     String?
   signature   String?
+  accessToken String?
   createdAt   DateTime @default(now())
 }

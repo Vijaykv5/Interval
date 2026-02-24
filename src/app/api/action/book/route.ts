@@ -233,7 +233,9 @@ export async function POST(req: Request) {
       data: Buffer.from(memoText, "utf8"),
     });
 
-    await prisma.$transaction([
+    const accessToken = crypto.randomUUID();
+
+    const [booking] = await prisma.$transaction([
       prisma.booking.create({
         data: {
           slotId: slot.id,
@@ -243,6 +245,7 @@ export async function POST(req: Request) {
           name: name || null,
           email: email || null,
           callFor: callFor || null,
+          accessToken,
         },
       }),
       prisma.slot.update({
@@ -262,11 +265,19 @@ export async function POST(req: Request) {
       .add(transferIx)
       .add(memoIx);
 
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (requestUrl.origin.startsWith("http") ? requestUrl.origin : `https://${requestUrl.host}`);
+    const joinUrl = `${baseUrl}/booking/${booking.id}?token=${accessToken}`;
+    const meetMsg = slot.meetLink
+      ? ` After signing, open this link to join your meeting: ${joinUrl}`
+      : "";
+
     const payload = await createPostResponse({
       fields: {
         type: "transaction",
         transaction,
-        message: `Pay ${slot.price} SOL to book slot with ${slot.creator.username}`,
+        message: `Pay ${slot.price} SOL to book slot with ${slot.creator.username}.${meetMsg}`,
       },
     });
 

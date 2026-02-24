@@ -33,10 +33,19 @@ export async function POST(req: Request) {
       },
     });
 
+    // Generate unique meet link per slot
+    const roomId = slot.id.replace(/-/g, "").slice(0, 16);
+    const meetLink = `https://meet.jit.si/interval-${roomId}`;
+
+    const updatedSlot = await prisma.slot.update({
+      where: { id: slot.id },
+      data: { meetLink },
+    });
+
     const origin = new URL(req.url).origin;
     const blinkUrl = `${origin}/api/action/book?slotId=${slot.id}`;
 
-    return NextResponse.json({ ...slot, blinkUrl });
+    return NextResponse.json({ ...updatedSlot, blinkUrl });
   } catch (err: unknown) {
     const isForeignKeyError =
       err &&

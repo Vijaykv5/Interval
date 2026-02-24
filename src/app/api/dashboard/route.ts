@@ -1,3 +1,4 @@
+import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
@@ -14,9 +15,14 @@ export async function GET(req: Request) {
       );
     }
 
+    const creator = await prisma.creator.findUnique({
+      where: { id: creatorId },
+      select: { wallet: true },
+    });
+
     const now = new Date();
 
-    const [upcomingMeetings, earningsResult, totalBookings, mySlots, bookings] =
+    const [upcomingMeetings, earningsResult, totalBookings, mySlots, bookings, walletBalance] =
       await Promise.all([
         prisma.slot.findMany({
           where: {
@@ -55,6 +61,21 @@ export async function GET(req: Request) {
             }
             throw e;
           }),
+        creator
+          ? (async () => {
+              try {
+                const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl("devnet");
+                const connection = new Connection(rpcUrl);
+                const lamports = await connection.getBalance(
+                  new PublicKey(creator.wallet),
+                  "processed"
+                );
+                return lamports / 1e9;
+              } catch {
+                return null;
+              }
+            })()
+          : Promise.resolve(null),
       ]);
 
     const earnings = earningsResult._sum.price ?? 0;
@@ -65,6 +86,7 @@ export async function GET(req: Request) {
       totalBookings,
       mySlots,
       bookings,
+      walletBalance,
     });
   } catch (err) {
     console.error(err);
