@@ -44,16 +44,52 @@ export default function Explore() {
   const [error, setError] = useState<string | null>(null);
   const [hoverCreator, setHoverCreator] = useState<Creator | null>(null);
   const [modalCreator, setModalCreator] = useState<Creator | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
+  const filteredCreators = creators.filter((c) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      c.username.toLowerCase().includes(q) ||
+      (c.bio?.toLowerCase().includes(q) ?? false)
+    );
+  });
+
+  const fetchCreators = (showLoading = false) => {
+    if (showLoading) setLoading(true);
     fetch("/api/creators")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load creators");
         return res.json();
       })
-      .then(setCreators)
+      .then((data) => {
+        setCreators(data);
+        setError(null);
+        // Keep modal in sync if open (so new slots appear without closing modal)
+        if (modalCreator) {
+          const updated = data.find((c: Creator) => c.id === modalCreator.id);
+          if (updated) setModalCreator(updated);
+        }
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchCreators(true);
+  }, []);
+
+  // Poll for new slots so newly created slots appear without refresh
+  useEffect(() => {
+    const interval = setInterval(() => fetchCreators(false), 15_000);
+    return () => clearInterval(interval);
+  }, [modalCreator]);
+
+  // Refetch when user returns to this tab (e.g. after creating a slot elsewhere)
+  useEffect(() => {
+    const onFocus = () => fetchCreators(false);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   const baseUrl =
@@ -77,6 +113,39 @@ export default function Explore() {
           <p className="text-white/70 mt-2 text-sm sm:text-base">
             Browse creators and book a slot.
           </p>
+        </div>
+
+        {/* Search bar */}
+        <div className="mb-6 sm:mb-8">
+          <form
+            onSubmit={(e) => e.preventDefault()}
+            className="flex gap-2 sm:gap-3"
+          >
+            <div className="relative flex-1 min-w-0">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </span>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by username or bio..."
+                className="w-full pl-10 pr-4 py-3 sm:py-3.5 rounded-xl border border-white/15 bg-white/5 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/25 focus:border-white/25 transition-all"
+                aria-label="Search creators"
+              />
+            </div>
+            <button
+              type="submit"
+              className="shrink-0 inline-flex items-center gap-2 px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl font-medium text-white bg-white/15 hover:bg-white/25 border border-white/20 hover:border-white/30 focus:outline-none focus:ring-2 focus:ring-white/25 transition-all active:scale-[0.98]"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <span className="hidden sm:inline">Search</span>
+            </button>
+          </form>
         </div>
 
         {loading && (
@@ -109,9 +178,15 @@ export default function Explore() {
           </div>
         )}
 
-        {!loading && !error && creators.length > 0 && (
+        {!loading && !error && creators.length > 0 && filteredCreators.length === 0 && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center text-white/70">
+            No creators match &quot;{searchQuery.trim()}&quot;. Try a different search.
+          </div>
+        )}
+
+        {!loading && !error && filteredCreators.length > 0 && (
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {creators.map((creator) => (
+            {filteredCreators.map((creator) => (
               <li
                 key={creator.id}
                 className="relative rounded-2xl border border-white/10 bg-white/5 overflow-hidden hover:border-white/20 hover:bg-white/10 transition-all cursor-pointer"
