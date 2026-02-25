@@ -42,6 +42,9 @@ const utendo = localFont({
 export const metadata: Metadata = {
   title: "Interval — Book time with creators on Solana",
   description: "Book time with creators and founders on Solana. Create slots or find a creator and schedule a meeting.",
+  icons: {
+    icon: "/favicon.png",
+  },
 };
 
 export default function RootLayout({

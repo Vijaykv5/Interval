@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
@@ -151,8 +152,24 @@ function DashboardLayoutClient({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <Link href="/dashboard" className="font-semibold text-lg tracking-tight" style={{ color: "#ffd28e" }}>
-          Interval
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-1.5 shrink-0 py-0.5 pr-0.5 rounded transition-opacity hover:opacity-90 focus:outline-none"
+        >
+          <span
+            className="text-base font-bold tracking-[0.1em] uppercase"
+            style={{ color: "#ffd28e", fontFamily: "var(--font-archivo-condensed), sans-serif" }}
+          >
+            INTERVAL
+          </span>
+          <Image
+            src="/favicon.png"
+            alt=""
+            width={20}
+            height={20}
+            className="h-4 w-4 object-contain flex-shrink-0 opacity-95"
+            priority
+          />
         </Link>
         <div className="w-20 flex justify-end">
           <WalletAuth variant="landing" />
@@ -194,8 +211,24 @@ function DashboardLayoutClient({
       {/* Sidebar — hidden on mobile, visible from md (desktop unchanged) */}
       <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-white/10 bg-gradient-to-b from-black/60 to-black/40">
         <div className="p-5 border-b border-white/10">
-          <Link href="/dashboard" className="font-semibold text-xl tracking-tight" style={{ color: "#ffd28e" }}>
-            Interval
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-1.5 shrink-0 py-0.5 pr-0.5 rounded transition-opacity hover:opacity-90 focus:outline-none"
+          >
+            <span
+              className="text-lg font-bold tracking-[0.1em] uppercase"
+              style={{ color: "#ffd28e", fontFamily: "var(--font-archivo-condensed), sans-serif" }}
+            >
+              Interval
+            </span>
+            <Image
+              src="/favicon.png"
+              alt=""
+              width={22}
+              height={22}
+              className="h-5 w-5 object-contain flex-shrink-0 opacity-95"
+              priority
+            />
           </Link>
         </div>
         <nav className="flex-1 p-3 space-y-1">
