@@ -46,7 +46,7 @@ function disabledAction(
   return Response.json(payload, { status: 200, headers });
 }
 
-/** Icon URL for blink: use our icon endpoint (serves image with CORS) so Dialect can load it. */
+/** Icon URL for blink: use creator's PFP */
 function getActionIcon(
   slotId: string,
   slot: { creator: { profileImageUrl: string | null } } | null,
@@ -57,6 +57,10 @@ function getActionIcon(
   if (!isPublicBase || !slot) return ACTION_ICON_FALLBACK;
   const url = slot.creator.profileImageUrl?.trim();
   if (!url) return ACTION_ICON_FALLBACK;
+  // Use creator's Cloudinary (or any external) image directly so blinks show their PFP
+  if (url.startsWith("https://") || url.startsWith("http://")) {
+    return url;
+  }
   const origin = baseUrl.trim().replace(/\/$/, "");
   return `${origin}/api/action/book/icon?slotId=${encodeURIComponent(slotId)}`;
 }
