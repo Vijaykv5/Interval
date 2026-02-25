@@ -31,7 +31,7 @@ export default function Home() {
     <LandingOnboardingGate>
     <div className="min-h-screen h-screen max-h-screen flex flex-col text-white overflow-hidden relative">
       <CursorGlow />
-      <header className="flex items-center justify-between px-6 py-4 shrink-0 w-full">
+      <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 shrink-0 w-full">
         <Link
           href="/"
           className="text-xl font-bold tracking-tight"
@@ -45,16 +45,16 @@ export default function Home() {
       </header>
 
       {/* Top: heading, subheading, CTAs — pulled down a bit */}
-      <section className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 pt-16 sm:pt-24 pb-12 sm:pb-16 text-center">
+      <section className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 pt-12 sm:pt-24 pb-8 md:pb-12 sm:pb-16 text-center">
         <div className="max-w-2xl mx-auto">
           <h1
-            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl uppercase tracking-[0.08em] text-white mb-5 font-extrabold whitespace-nowrap"
+            className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl uppercase tracking-[0.08em] text-white mb-5 font-extrabold sm:whitespace-nowrap"
             style={{ fontFamily: "var(--font-archivo-condensed), sans-serif" }}
           >
             Book. <span style={{ color: "#ffd28e" }}>Schedule.</span> Win.
           </h1>
           <p
-            className="text-lg sm:text-xl md:text-2xl text-white/70 mb-8 whitespace-nowrap"
+            className="text-base sm:text-lg md:text-xl lg:text-2xl text-white/70 mb-6 sm:mb-8 sm:whitespace-nowrap"
             style={{ fontFamily: "var(--font-archivo-condensed), sans-serif" }}
           >
             Book time with your favorite creators and founders on Solana.
@@ -65,8 +65,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Bottom: 5 fanned cards — pushed down, trim if below viewport */}
-      <section className="w-full flex justify-center items-end px-1 sm:px-2 pb-0 min-h-0 overflow-hidden shrink-0 mt-auto">
+      {/* Bottom: 5 fanned cards — hidden on mobile, visible from md up; desktop unchanged */}
+      <section className="hidden md:flex w-full justify-center items-end px-1 sm:px-2 pb-0 min-h-0 overflow-hidden shrink-0 mt-auto">
         <div className="relative w-full max-w-[100vw] h-[420px] sm:h-[520px] flex justify-center items-end overflow-hidden" style={{ minWidth: "100%" }}>
           {CREATOR_CARD_TEMPLATES.map((card, i) => {
             const total = CREATOR_CARD_TEMPLATES.length;

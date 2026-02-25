@@ -62,19 +62,19 @@ export default function Explore() {
       : process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   return (
-    <div className="min-h-screen px-6 py-12 text-white">
+    <div className="min-h-screen px-4 sm:px-6 py-8 sm:py-12 text-white">
       <div className="max-w-4xl mx-auto">
-        <div className="mb-10">
+        <div className="mb-8 sm:mb-10">
           <Link
             href="/"
-            className="text-white/70 hover:text-white font-medium inline-flex items-center gap-1 mb-6 transition-colors"
+            className="text-white/70 hover:text-white font-medium inline-flex items-center gap-1 mb-4 sm:mb-6 transition-colors"
           >
             ← Back to home
           </Link>
-          <h1 className="text-3xl md:text-4xl font-bold text-white">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white">
             Connect with creators
           </h1>
-          <p className="text-white/70 mt-2">
+          <p className="text-white/70 mt-2 text-sm sm:text-base">
             Browse creators and book a slot.
           </p>
         </div>
@@ -177,32 +177,32 @@ export default function Explore() {
       {/* Modal: available slots */}
       {modalCreator && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
           onClick={() => setModalCreator(null)}
         >
           <div
-            className="bg-[#0d0d0f] border border-white/10 rounded-2xl shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col"
+            className="bg-[#0d0d0f] border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-5 border-b border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
                 {modalCreator.profileImageUrl ? (
                   <img
                     src={modalCreator.profileImageUrl}
                     alt={modalCreator.username}
-                    className="w-12 h-12 rounded-full object-cover"
+                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover shrink-0"
                   />
                 ) : (
-                  <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-lg font-bold text-white/60">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 flex items-center justify-center text-base sm:text-lg font-bold text-white/60 shrink-0">
                     {modalCreator.username.slice(0, 2).toUpperCase()}
                   </div>
                 )}
-                <div>
-                  <h3 className="font-semibold text-white">
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-white truncate">
                     @{modalCreator.username}
                   </h3>
                   {modalCreator.bio && (
-                    <p className="text-sm text-white/70 line-clamp-1">
+                    <p className="text-xs sm:text-sm text-white/70 line-clamp-1">
                       {modalCreator.bio}
                     </p>
                   )}

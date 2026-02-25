@@ -12,8 +12,8 @@ export default async function BookingPage({ params, searchParams }: Props) {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="bg-white/95 backdrop-blur rounded-2xl shadow-xl border border-gray-200 p-8 max-w-md w-full text-center">
+      <div className="min-h-screen flex items-center justify-center p-4 sm:p-6">
+        <div className="bg-white/95 backdrop-blur rounded-2xl shadow-xl border border-gray-200 p-6 sm:p-8 max-w-md w-full text-center">
           <h1 className="text-xl font-bold text-gray-900 mb-2">Access required</h1>
           <p className="text-gray-600 text-sm mb-6">
             Use the link from your booking confirmation to access your meeting.
@@ -39,8 +39,8 @@ export default async function BookingPage({ params, searchParams }: Props) {
 
   if (!booking || booking.accessToken !== token) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="bg-white/95 backdrop-blur rounded-2xl shadow-xl border border-gray-200 p-8 max-w-md w-full text-center">
+      <div className="min-h-screen flex items-center justify-center p-4 sm:p-6">
+        <div className="bg-white/95 backdrop-blur rounded-2xl shadow-xl border border-gray-200 p-6 sm:p-8 max-w-md w-full text-center">
           <h1 className="text-xl font-bold text-gray-900 mb-2">Invalid or expired link</h1>
           <p className="text-gray-600 text-sm mb-6">
             This link may be incorrect or has expired. Please contact the creator for a new link.
@@ -67,8 +67,8 @@ export default async function BookingPage({ params, searchParams }: Props) {
   });
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="bg-white/95 backdrop-blur rounded-2xl shadow-xl border border-gray-200 p-8 max-w-md w-full">
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6">
+      <div className="bg-white/95 backdrop-blur rounded-2xl shadow-xl border border-gray-200 p-6 sm:p-8 max-w-md w-full">
         <h1 className="text-xl font-bold text-gray-900 mb-1">Your meeting</h1>
         <p className="text-gray-500 text-sm mb-6">
           {booking.creator.username} · {start}

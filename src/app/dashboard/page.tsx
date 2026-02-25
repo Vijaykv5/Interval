@@ -355,8 +355,8 @@ export default function Dashboard() {
   return (
     <div className="p-6 md:p-10 w-full text-white">
         {!walletAddress && (
-          <div className="mb-6 p-4 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-sm">
-            Connect your wallet in the sidebar to create slots and see your dashboard.
+          <div className="mb-6 p-4 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-sm text-center sm:text-left">
+            Connect your wallet to create slots and see your dashboard.
           </div>
         )}
 
@@ -458,8 +458,8 @@ export default function Dashboard() {
                   ) : (
                     <ul className="divide-y divide-white/10">
                       {mySlots.map((slot) => (
-                        <li key={slot.id} className="p-6 flex flex-wrap items-center justify-between gap-4">
-                          <div>
+                        <li key={slot.id} className="p-4 sm:p-6 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-4">
+                          <div className="min-w-0">
                             <p className="font-medium text-white">{formatMeetingDate(slot.startTime)}</p>
                             <p className="text-sm text-white/60">
                               {formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)} · <span style={{ color: "#ffd28e" }}>{Number(slot.price).toFixed(2)} SOL</span>
@@ -470,7 +470,7 @@ export default function Dashboard() {
                               </a>
                             )}
                           </div>
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-wrap items-center gap-3">
                             {slot.status === "available" ? (
                               <>
                                 <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90">Available</span>
@@ -545,10 +545,9 @@ export default function Dashboard() {
                   onClick={() => setSelectedBooking(null)}
                 />
                 <div
-                  className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-[#0d0d0f] border-l border-white/10 shadow-2xl z-50 flex flex-col"
+                  className="fixed top-0 right-0 bottom-0 w-full sm:max-w-md bg-[#0d0d0f] border-l border-white/10 shadow-2xl z-50 flex flex-col"
                   style={{ animation: "slideInFromRight 0.3s ease-out" }}
                 >
-                  <style>{`@keyframes fadeIn{from{opacity:0}to{opacity:1}}@keyframes slideInFromRight{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}`}</style>
                   <div className="p-5 border-b border-white/10 flex items-center justify-between shrink-0">
                     <h3 className="text-lg font-semibold text-white">Booking details</h3>
                     <button

@@ -222,7 +222,7 @@ export default function ProfilePage() {
               <p className="text-xs text-white/50 mt-1">{bio.length}/300</p>
             </div>
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <button
                 type="submit"
                 disabled={submitting}
