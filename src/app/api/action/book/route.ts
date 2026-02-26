@@ -227,6 +227,16 @@ export async function POST(req: Request) {
     const connection = new Connection(rpcUrl);
 
     const creatorWallet = new PublicKey(slot.creator.wallet);
+    const creatorAccountInfo = await connection.getAccountInfo(
+      creatorWallet,
+      "confirmed"
+    );
+    if (!creatorAccountInfo) {
+      return Response.json(
+        { message: "Creator wallet account not found on chain" } satisfies ActionError,
+        { status: 400, headers }
+      );
+    }
     const lamports = Math.floor(slot.price * LAMPORTS_PER_SOL);
 
     if (lamports <= 0) {
@@ -282,8 +292,11 @@ export async function POST(req: Request) {
       }),
     ]);
 
-    const { blockhash, lastValidBlockHeight } =
-      await connection.getLatestBlockhash("confirmed");
+    const [{ blockhash, lastValidBlockHeight }] = await Promise.all([
+      connection.getLatestBlockhash("confirmed"),
+      connection.getSlot("confirmed"),
+      connection.getBlockHeight("confirmed"),
+    ]);
 
     const transaction = new Transaction({
       feePayer: account,

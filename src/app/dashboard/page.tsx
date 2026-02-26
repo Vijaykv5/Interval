@@ -3,9 +3,15 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useWallets } from "@privy-io/react-auth/solana";
+import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
 import { toast } from "sonner";
 import { getDialBlinkUrl } from "@/lib/constants";
+import {
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  LAMPORTS_PER_SOL,
+} from "@solana/web3.js";
 
 type Slot = {
   id: string;
@@ -97,6 +103,7 @@ function addMinutesToDatetimeLocal(dt: string, minutes: number): string {
 
 export default function Dashboard() {
   const { wallets } = useWallets();
+  const { signAndSendTransaction } = useSignAndSendTransaction();
   const [creator, setCreator] = useState<Creator | null>(null);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -106,6 +113,11 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawRecipient, setWithdrawRecipient] = useState("");
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
+  const [withdrawing, setWithdrawing] = useState(false);
 
   const solanaWallet = wallets[0];
   const walletAddress = solanaWallet?.address ?? null;
@@ -352,6 +364,76 @@ export default function Dashboard() {
     }
   }
 
+  async function handleWithdraw(e: React.FormEvent) {
+    e.preventDefault();
+    setWithdrawError(null);
+    if (!solanaWallet || !walletAddress) {
+      setWithdrawError("Connect your wallet first.");
+      return;
+    }
+    const amountNum = parseFloat(withdrawAmount);
+    const recipient = withdrawRecipient.trim();
+    if (Number.isNaN(amountNum) || amountNum <= 0) {
+      setWithdrawError("Enter a valid amount greater than 0.");
+      return;
+    }
+    if (!recipient || recipient.length < 32) {
+      setWithdrawError("Enter a valid Solana recipient address.");
+      return;
+    }
+    const balance = walletBalance ?? 0;
+    if (amountNum > balance) {
+      setWithdrawError(`Insufficient balance. Available: ${balance.toFixed(4)} SOL`);
+      return;
+    }
+    setWithdrawing(true);
+    try {
+      const lamports = Math.floor(amountNum * LAMPORTS_PER_SOL);
+      const instruction = SystemProgram.transfer({
+        fromPubkey: new PublicKey(walletAddress),
+        toPubkey: new PublicKey(recipient),
+        lamports,
+      });
+      const transaction = new Transaction();
+      transaction.add(instruction);
+      transaction.feePayer = new PublicKey(walletAddress);
+
+      const blockhashRes = await fetch("/api/solana/blockhash");
+      if (!blockhashRes.ok) {
+        const data = await blockhashRes.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Failed to get blockhash");
+      }
+      const { blockhash } = await blockhashRes.json();
+      transaction.recentBlockhash = blockhash;
+
+      const txBytes = transaction.serialize({
+        requireAllSignatures: false,
+        verifySignatures: false,
+      });
+
+      await signAndSendTransaction({
+        transaction: new Uint8Array(txBytes),
+        wallet: solanaWallet,
+        chain: "solana:devnet",
+      });
+
+      toast.success("Withdrawal successful!");
+      setWithdrawModalOpen(false);
+      setWithdrawAmount("");
+      setWithdrawRecipient("");
+      setWithdrawError(null);
+      if (creator) {
+        await refreshDashboard(creator.id);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Withdrawal failed. Please try again.";
+      setWithdrawError(msg);
+      toast.error(msg);
+    } finally {
+      setWithdrawing(false);
+    }
+  }
+
   return (
     <div className="p-6 md:p-10 w-full text-white">
         {!walletAddress && (
@@ -388,6 +470,19 @@ export default function Dashboard() {
                         <span className="text-white/40">—</span>
                       )}
                     </p>
+                    {walletAddress && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWithdrawModalOpen(true);
+                          setWithdrawError(null);
+                        }}
+                        className="mt-3 text-sm font-medium hover:opacity-90 cursor-pointer transition-opacity"
+                        style={{ color: "#ffd28e" }}
+                      >
+                        Withdraw →
+                      </button>
+                    )}
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-6 overflow-hidden relative group hover:border-white/15 transition-colors">
                     <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
@@ -603,6 +698,91 @@ export default function Dashboard() {
                         <p className="text-white/90">{selectedBooking.callFor}</p>
                       </div>
                     )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Withdraw modal */}
+            {withdrawModalOpen && (
+              <>
+                <div
+                  className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+                  aria-hidden
+                  onClick={() => !withdrawing && setWithdrawModalOpen(false)}
+                />
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                  <div
+                    className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0d0d0f] shadow-2xl overflow-hidden"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-white">Withdraw</h3>
+                      <button
+                        type="button"
+                        onClick={() => !withdrawing && setWithdrawModalOpen(false)}
+                        className="p-2 rounded-lg text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                        aria-label="Close"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <form onSubmit={handleWithdraw} className="p-5 space-y-5">
+                      {withdrawError && (
+                        <div className="rounded-xl bg-red-500/15 border border-red-400/30 px-4 py-3 text-sm text-red-200 flex items-start gap-2">
+                          <span className="shrink-0 mt-0.5">⚠</span>
+                          <span>{withdrawError}</span>
+                        </div>
+                      )}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label htmlFor="withdraw-amount" className="block text-sm font-medium text-white/90">Amount</label>
+                          <span className="text-xs text-white/50 flex items-center gap-1">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                            {(walletBalance ?? 0).toFixed(2)} $SOL
+                          </span>
+                        </div>
+                        <div className="flex rounded-xl border border-white/20 bg-black/40 overflow-hidden">
+                          <input
+                            id="withdraw-amount"
+                            type="number"
+                            step="0.0001"
+                            min="0"
+                            placeholder="0.00"
+                            value={withdrawAmount}
+                            onChange={(e) => {
+                              setWithdrawAmount(e.target.value);
+                              setWithdrawError(null);
+                            }}
+                            className="flex-1 px-4 py-3 bg-transparent text-white placeholder-white/40 focus:outline-none [color-scheme:dark]"
+                          />
+                          <span className="px-4 py-3 text-white/70 text-sm font-medium border-l border-white/10">$SOL</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label htmlFor="withdraw-recipient" className="block text-sm font-medium text-white/90 mb-2">Recipient Address</label>
+                        <input
+                          id="withdraw-recipient"
+                          type="text"
+                          placeholder="Enter recipient address"
+                          value={withdrawRecipient}
+                          onChange={(e) => {
+                            setWithdrawRecipient(e.target.value);
+                            setWithdrawError(null);
+                          }}
+                          className="w-full rounded-xl border border-white/20 bg-black/40 px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#ffd28e]/50 focus:border-[#ffd28e]/40 transition-colors [color-scheme:dark]"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={withdrawing}
+                        className="w-full px-5 py-3.5 rounded-xl font-semibold text-black bg-white/80 hover:bg-white disabled:opacity-60 disabled:pointer-events-none transition-opacity focus:outline-none focus:ring-2 focus:ring-[#ffd28e] focus:ring-offset-2 focus:ring-offset-[#0d0d0f]"
+                      >
+                        {withdrawing ? "Withdrawing…" : "Withdraw"}
+                      </button>
+                    </form>
                   </div>
                 </div>
               </>

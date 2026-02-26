@@ -63,17 +63,27 @@ export async function GET(req: Request) {
           }),
         creator
           ? (async () => {
-              try {
-                const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl("devnet");
-                const connection = new Connection(rpcUrl);
-                const lamports = await connection.getBalance(
-                  new PublicKey(creator.wallet),
-                  "processed"
-                );
-                return lamports / 1e9;
-              } catch {
-                return null;
+              const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl("devnet");
+              const connection = new Connection(rpcUrl);
+              const pk = new PublicKey(creator.wallet);
+              const maxRetries = 3;
+              for (let i = 0; i < maxRetries; i++) {
+                try {
+                  const lamports = await connection.getBalance(pk, "confirmed");
+                  return lamports / 1e9;
+                } catch (err) {
+                  const isTimeout =
+                    err instanceof Error &&
+                    (err.message.includes("504") || err.message.includes("timeout") || err.message.includes("Gateway Time-out"));
+                  if (isTimeout && i < maxRetries - 1) {
+                    await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+                    continue;
+                  }
+                  console.error("Wallet balance RPC error:", err);
+                  return null;
+                }
               }
+              return null;
             })()
           : Promise.resolve(null),
       ]);
