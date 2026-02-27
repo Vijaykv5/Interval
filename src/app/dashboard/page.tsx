@@ -126,7 +126,7 @@ export default function Dashboard() {
     if (showLoading) setLoading(true);
     try {
       const dashRes = await fetch(
-        `/api/dashboard?creatorId=${encodeURIComponent(creatorId)}`
+        `/api/dashboard?creatorId=${encodeURIComponent(creatorId)}${walletAddress ? `&wallet=${encodeURIComponent(walletAddress)}` : ""}`
       );
       if (dashRes.ok) {
         const data = await dashRes.json();
@@ -142,7 +142,7 @@ export default function Dashboard() {
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, []);
+  }, [walletAddress]);
 
   useEffect(() => {
     if (!walletAddress) {
@@ -182,7 +182,7 @@ export default function Dashboard() {
         setCreator(creatorData);
 
         const dashRes = await fetch(
-          `/api/dashboard?creatorId=${encodeURIComponent(creatorData.id)}`
+          `/api/dashboard?creatorId=${encodeURIComponent(creatorData.id)}${walletAddress ? `&wallet=${encodeURIComponent(walletAddress)}` : ""}`
         );
         if (cancelled) return;
         if (dashRes.ok) {

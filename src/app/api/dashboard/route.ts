@@ -3,10 +3,51 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
+const DEVNET_RPC_URLS: string[] = [
+  "https://api.devnet.solana.com",
+  clusterApiUrl("devnet"),
+  ...(process.env.SOLANA_RPC && process.env.SOLANA_RPC.toLowerCase().includes("devnet")
+    ? [process.env.SOLANA_RPC]
+    : []),
+];
+
+async function fetchWalletBalanceSol(walletAddress: string): Promise<number | null> {
+  const pk = new PublicKey(walletAddress);
+  const commitments: Array<"confirmed" | "finalized"> = ["finalized", "confirmed"];
+
+  for (const rpcUrl of DEVNET_RPC_URLS) {
+    for (const commitment of commitments) {
+      const connection = new Connection(rpcUrl, { commitment });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const lamports = await connection.getBalance(pk, commitment);
+          return lamports / 1e9;
+        } catch (err) {
+          const isRetryable =
+            err instanceof Error &&
+            (err.message.includes("504") ||
+              err.message.includes("timeout") ||
+              err.message.includes("Gateway Time-out") ||
+              err.message.includes("fetch"));
+          if (isRetryable && attempt === 0) {
+            await new Promise((r) => setTimeout(r, 400));
+            continue;
+          }
+          if (attempt === 1) {
+            console.warn("Wallet balance RPC error (devnet):", rpcUrl, commitment, err);
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const creatorId = searchParams.get("creatorId");
+    const walletParam = searchParams.get("wallet")?.trim() || null;
 
     if (!creatorId) {
       return NextResponse.json(
@@ -21,6 +62,7 @@ export async function GET(req: Request) {
     });
 
     const now = new Date();
+    const walletForBalance = walletParam ?? creator?.wallet ?? null;
 
     const [upcomingMeetings, earningsResult, totalBookings, mySlots, bookings, walletBalance] =
       await Promise.all([
@@ -61,31 +103,7 @@ export async function GET(req: Request) {
             }
             throw e;
           }),
-        creator
-          ? (async () => {
-              const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl("devnet");
-              const connection = new Connection(rpcUrl);
-              const pk = new PublicKey(creator.wallet);
-              const maxRetries = 3;
-              for (let i = 0; i < maxRetries; i++) {
-                try {
-                  const lamports = await connection.getBalance(pk, "confirmed");
-                  return lamports / 1e9;
-                } catch (err) {
-                  const isTimeout =
-                    err instanceof Error &&
-                    (err.message.includes("504") || err.message.includes("timeout") || err.message.includes("Gateway Time-out"));
-                  if (isTimeout && i < maxRetries - 1) {
-                    await new Promise((r) => setTimeout(r, 500 * (i + 1)));
-                    continue;
-                  }
-                  console.error("Wallet balance RPC error:", err);
-                  return null;
-                }
-              }
-              return null;
-            })()
-          : Promise.resolve(null),
+        walletForBalance ? fetchWalletBalanceSol(walletForBalance) : Promise.resolve(null),
       ]);
 
     const earnings = earningsResult._sum.price ?? 0;

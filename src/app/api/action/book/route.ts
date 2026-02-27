@@ -24,6 +24,14 @@ export const dynamic = "force-dynamic";
 const chainId = process.env.SOLANA_NETWORK ?? "devnet";
 const actionVersion = "1";
 
+const DEVNET_RPC_URLS: string[] = [
+  "https://api.devnet.solana.com",
+  clusterApiUrl("devnet"),
+  ...(process.env.SOLANA_RPC && process.env.SOLANA_RPC.toLowerCase().includes("devnet")
+    ? [process.env.SOLANA_RPC]
+    : []),
+];
+
 const headers = createActionHeaders({
   chainId,
   actionVersion,
@@ -224,16 +232,25 @@ export async function POST(req: Request) {
     }
 
     const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl("devnet");
-    const connection = new Connection(rpcUrl);
+    let connection = new Connection(rpcUrl);
 
     const creatorWallet = new PublicKey(slot.creator.wallet);
-    const creatorAccountInfo = await connection.getAccountInfo(
-      creatorWallet,
-      "confirmed"
-    );
+    let creatorAccountInfo: Awaited<ReturnType<Connection["getAccountInfo"]>> = null;
+    for (const devnetUrl of DEVNET_RPC_URLS) {
+      try {
+        const conn = new Connection(devnetUrl);
+        creatorAccountInfo = await conn.getAccountInfo(creatorWallet, "confirmed");
+        if (creatorAccountInfo) {
+          connection = conn;
+          break;
+        }
+      } catch {
+        // try next RPC
+      }
+    }
     if (!creatorAccountInfo) {
       return Response.json(
-        { message: "Creator wallet account not found on chain" } satisfies ActionError,
+        { message: "Creator wallet account not found on chain (devnet). Ensure the creator wallet has received SOL on devnet." } satisfies ActionError,
         { status: 400, headers }
       );
     }
