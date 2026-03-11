@@ -1,7 +1,8 @@
 import { Connection, clusterApiUrl } from "@solana/web3.js";
 import { NextResponse } from "next/server";
 
-const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl("devnet");
+const network = process.env.SOLANA_NETWORK === "devnet" ? "devnet" : "mainnet-beta";
+const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl(network);
 
 export async function GET() {
   try {

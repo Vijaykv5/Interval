@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getDialBlinkUrl } from "@/lib/constants";
 
 type SlotOption = {
   id: string;
@@ -17,33 +16,21 @@ type Creator = {
   wallet: string;
   profileImageUrl: string | null;
   bio: string | null;
+  xAccount?: string | null;
+  launchedTokenMint?: string | null;
+  launchedTokenName?: string | null;
+  launchedTokenSymbol?: string | null;
+  launchedTokenUrl?: string | null;
+  launchedTokenAt?: string | null;
   firstAvailableSlot: { id: string; price: number } | null;
   availableSlots: SlotOption[];
 };
-
-function formatSlotDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatSlotTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
 
 export default function Explore() {
   const [creators, setCreators] = useState<Creator[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hoverCreator, setHoverCreator] = useState<Creator | null>(null);
-  const [modalCreator, setModalCreator] = useState<Creator | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredCreators = creators.filter((c) => {
@@ -65,11 +52,6 @@ export default function Explore() {
       .then((data) => {
         setCreators(data);
         setError(null);
-        // Keep modal in sync if open (so new slots appear without closing modal)
-        if (modalCreator) {
-          const updated = data.find((c: Creator) => c.id === modalCreator.id);
-          if (updated) setModalCreator(updated);
-        }
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -83,7 +65,7 @@ export default function Explore() {
   useEffect(() => {
     const interval = setInterval(() => fetchCreators(false), 15_000);
     return () => clearInterval(interval);
-  }, [modalCreator]);
+  }, []);
 
   // Refetch when user returns to this tab (e.g. after creating a slot elsewhere)
   useEffect(() => {
@@ -91,11 +73,6 @@ export default function Explore() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
-
-  const baseUrl =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   return (
     <div className="min-h-screen px-4 sm:px-6 py-8 sm:py-12 text-white">
@@ -189,10 +166,9 @@ export default function Explore() {
             {filteredCreators.map((creator) => (
               <li
                 key={creator.id}
-                className="relative rounded-2xl border border-white/10 bg-white/5 overflow-hidden hover:border-white/20 hover:bg-white/10 transition-all cursor-pointer"
+                className="relative"
                 onMouseEnter={() => setHoverCreator(creator)}
                 onMouseLeave={() => setHoverCreator(null)}
-                onClick={() => setModalCreator(creator)}
               >
                 {/* Hover popover */}
                 {hoverCreator?.id === creator.id && (
@@ -215,126 +191,49 @@ export default function Explore() {
                   </div>
                 )}
 
-                <div className="aspect-square bg-white/5 relative overflow-hidden">
-                  {creator.profileImageUrl ? (
-                    <img
-                      src={creator.profileImageUrl}
-                      alt={creator.username}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-4xl font-bold text-white/40 bg-white/5">
-                      {creator.username.slice(0, 2).toUpperCase()}
-                    </div>
-                  )}
-                </div>
-                <div className="p-4">
-                  <h2 className="font-semibold text-white truncate">
-                    @{creator.username}
-                  </h2>
-                  {creator.bio && (
-                    <p className="text-sm text-white/70 line-clamp-2 mt-1">
-                      {creator.bio}
+                <Link
+                  href={`/explore/${encodeURIComponent(creator.username)}`}
+                  className="block rounded-2xl border border-white/10 bg-white/5 overflow-hidden hover:border-white/20 hover:bg-white/10 transition-all"
+                >
+                  <div className="aspect-square bg-white/5 relative overflow-hidden">
+                    {creator.profileImageUrl ? (
+                      <img
+                        src={creator.profileImageUrl}
+                        alt={creator.username}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl font-bold text-white/40 bg-white/5">
+                        {creator.username.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <h2 className="font-semibold text-white truncate">
+                      @{creator.username}
+                    </h2>
+                    {creator.launchedTokenMint && creator.launchedTokenUrl && (
+                      <p className="mt-1 text-xs font-medium text-[#ffd28e]">
+                        Live token {creator.launchedTokenSymbol ? `· $${creator.launchedTokenSymbol}` : ""}
+                      </p>
+                    )}
+                    {creator.bio && (
+                      <p className="text-sm text-white/70 line-clamp-2 mt-1">
+                        {creator.bio}
+                      </p>
+                    )}
+                    <p className="mt-3 text-sm text-white/60">
+                      {(creator.availableSlots ?? []).length > 0
+                        ? `${(creator.availableSlots ?? []).length} slot${(creator.availableSlots ?? []).length !== 1 ? "s" : ""} available · Open creator page`
+                        : "No slots available"}
                     </p>
-                  )}
-                  <p className="mt-3 text-sm text-white/60">
-                    {(creator.availableSlots ?? []).length > 0
-                      ? `${(creator.availableSlots ?? []).length} slot${(creator.availableSlots ?? []).length !== 1 ? "s" : ""} available · Click to book`
-                      : "No slots available"}
-                  </p>
-                </div>
+                  </div>
+                </Link>
               </li>
             ))}
           </ul>
         )}
       </div>
-
-      {/* Modal: available slots */}
-      {modalCreator && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
-          onClick={() => setModalCreator(null)}
-        >
-          <div
-            className="bg-[#0d0d0f] border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                {modalCreator.profileImageUrl ? (
-                  <img
-                    src={modalCreator.profileImageUrl}
-                    alt={modalCreator.username}
-                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover shrink-0"
-                  />
-                ) : (
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 flex items-center justify-center text-base sm:text-lg font-bold text-white/60 shrink-0">
-                    {modalCreator.username.slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <h3 className="font-semibold text-white truncate">
-                    @{modalCreator.username}
-                  </h3>
-                  {modalCreator.bio && (
-                    <p className="text-xs sm:text-sm text-white/70 line-clamp-1">
-                      {modalCreator.bio}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalCreator(null)}
-                className="p-2 rounded-lg text-white/60 hover:bg-white/10 hover:text-white transition-colors"
-                aria-label="Close"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="p-5 overflow-y-auto flex-1">
-              <h4 className="text-sm font-medium text-white/80 mb-3">
-                Available slots
-              </h4>
-              {(modalCreator.availableSlots ?? []).length === 0 ? (
-                <p className="text-white/60 text-sm">
-                  No slots available right now.
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {(modalCreator.availableSlots ?? []).map((slot) => (
-                    <li key={slot.id}>
-                      <a
-                        href={getDialBlinkUrl(
-                          `${baseUrl}/api/action/book?slotId=${slot.id}`
-                        )}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block rounded-xl border border-white/10 bg-white/5 p-4 hover:border-white/20 hover:bg-white/10 transition-colors"
-                      >
-                        <p className="font-medium text-white text-sm">
-                          {formatSlotDate(slot.startTime)}
-                        </p>
-                        <p className="text-xs text-white/60 mt-0.5">
-                          {formatSlotTime(slot.startTime)} – {formatSlotTime(slot.endTime)}
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-white">
-                          {slot.price % 1 === 0 ? slot.price : slot.price.toFixed(2)} SOL
-                        </p>
-                        <span className="inline-block mt-2 text-xs font-medium text-white/50">
-                          Open blink to book →
-                        </span>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

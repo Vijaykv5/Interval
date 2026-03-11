@@ -21,13 +21,14 @@ import { sendBookingConfirmationEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
-const chainId = process.env.SOLANA_NETWORK ?? "devnet";
+const network = process.env.SOLANA_NETWORK === "devnet" ? "devnet" : "mainnet-beta";
+const chainId = process.env.SOLANA_NETWORK ?? "mainnet-beta";
 const actionVersion = "1";
 
-const DEVNET_RPC_URLS: string[] = [
-  "https://api.devnet.solana.com",
-  clusterApiUrl("devnet"),
-  ...(process.env.SOLANA_RPC && process.env.SOLANA_RPC.toLowerCase().includes("devnet")
+const SOLANA_RPC_URLS: string[] = [
+  network === "devnet" ? "https://api.devnet.solana.com" : "https://api.mainnet-beta.solana.com",
+  clusterApiUrl(network),
+  ...(process.env.SOLANA_RPC
     ? [process.env.SOLANA_RPC]
     : []),
 ];
@@ -231,14 +232,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl("devnet");
+    const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl(network);
     let connection = new Connection(rpcUrl);
 
     const creatorWallet = new PublicKey(slot.creator.wallet);
     let creatorAccountInfo: Awaited<ReturnType<Connection["getAccountInfo"]>> = null;
-    for (const devnetUrl of DEVNET_RPC_URLS) {
+    for (const rpcCandidateUrl of SOLANA_RPC_URLS) {
       try {
-        const conn = new Connection(devnetUrl);
+        const conn = new Connection(rpcCandidateUrl);
         creatorAccountInfo = await conn.getAccountInfo(creatorWallet, "confirmed");
         if (creatorAccountInfo) {
           connection = conn;
@@ -250,7 +251,7 @@ export async function POST(req: Request) {
     }
     if (!creatorAccountInfo) {
       return Response.json(
-        { message: "Creator wallet account not found on chain (devnet). Ensure the creator wallet has received SOL on devnet." } satisfies ActionError,
+        { message: `Creator wallet account not found on chain (${network}). Ensure the creator wallet has received SOL on ${network}.` } satisfies ActionError,
         { status: 400, headers }
       );
     }

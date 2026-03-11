@@ -13,6 +13,11 @@ model Creator {
   profileImageUrl   String?
   bio               String?
   xAccount          String?
+  launchedTokenMint String?
+  launchedTokenName String?
+  launchedTokenSymbol String?
+  launchedTokenUrl  String?
+  launchedTokenAt   DateTime?
   createdAt         DateTime @default(now())
   slots             Slot[]
   bookings          Booking[]

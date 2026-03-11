@@ -20,6 +20,11 @@ export async function GET() {
       profileImageUrl: c.profileImageUrl,
       bio: c.bio,
       xAccount: c.xAccount,
+      launchedTokenMint: c.launchedTokenMint,
+      launchedTokenName: c.launchedTokenName,
+      launchedTokenSymbol: c.launchedTokenSymbol,
+      launchedTokenUrl: c.launchedTokenUrl,
+      launchedTokenAt: c.launchedTokenAt?.toISOString() ?? null,
       firstAvailableSlot: c.slots[0]
         ? { id: c.slots[0].id, price: c.slots[0].price }
         : null,

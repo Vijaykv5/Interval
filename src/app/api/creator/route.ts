@@ -44,7 +44,18 @@ function trimOptional(str: unknown): string | null {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { wallet, username, profileImageUrl, bio, xAccount } = body;
+    const {
+      wallet,
+      username,
+      profileImageUrl,
+      bio,
+      xAccount,
+      launchedTokenMint,
+      launchedTokenName,
+      launchedTokenSymbol,
+      launchedTokenUrl,
+      launchedTokenAt,
+    } = body;
 
     if (!wallet || typeof wallet !== "string" || wallet.length === 0) {
       return NextResponse.json(
@@ -88,6 +99,14 @@ export async function POST(req: Request) {
         profileImageUrl: trimOptional(profileImageUrl) ?? null,
         bio: trimOptional(bio) ?? null,
         xAccount: trimOptional(xAccount) ?? null,
+        launchedTokenMint: trimOptional(launchedTokenMint) ?? null,
+        launchedTokenName: trimOptional(launchedTokenName) ?? null,
+        launchedTokenSymbol: trimOptional(launchedTokenSymbol) ?? null,
+        launchedTokenUrl: trimOptional(launchedTokenUrl) ?? null,
+        launchedTokenAt:
+          typeof launchedTokenAt === "string" && launchedTokenAt.trim()
+            ? new Date(launchedTokenAt)
+            : null,
       },
     });
 
@@ -104,7 +123,18 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
-    const { wallet, username, profileImageUrl, bio, xAccount } = body;
+    const {
+      wallet,
+      username,
+      profileImageUrl,
+      bio,
+      xAccount,
+      launchedTokenMint,
+      launchedTokenName,
+      launchedTokenSymbol,
+      launchedTokenUrl,
+      launchedTokenAt,
+    } = body;
 
     if (!wallet || typeof wallet !== "string" || wallet.length === 0) {
       return NextResponse.json(
@@ -123,7 +153,17 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const data: { username?: string; profileImageUrl?: string | null; bio?: string | null; xAccount?: string | null } = {};
+    const data: {
+      username?: string;
+      profileImageUrl?: string | null;
+      bio?: string | null;
+      xAccount?: string | null;
+      launchedTokenMint?: string | null;
+      launchedTokenName?: string | null;
+      launchedTokenSymbol?: string | null;
+      launchedTokenUrl?: string | null;
+      launchedTokenAt?: Date | null;
+    } = {};
     if (username !== undefined) {
       const trimmed = typeof username === "string" ? username.trim() : "";
       if (trimmed.length === 0) {
@@ -148,6 +188,16 @@ export async function PATCH(req: Request) {
     if (profileImageUrl !== undefined) data.profileImageUrl = trimOptional(profileImageUrl);
     if (bio !== undefined) data.bio = trimOptional(bio);
     if (xAccount !== undefined) data.xAccount = trimOptional(xAccount);
+    if (launchedTokenMint !== undefined) data.launchedTokenMint = trimOptional(launchedTokenMint);
+    if (launchedTokenName !== undefined) data.launchedTokenName = trimOptional(launchedTokenName);
+    if (launchedTokenSymbol !== undefined) data.launchedTokenSymbol = trimOptional(launchedTokenSymbol);
+    if (launchedTokenUrl !== undefined) data.launchedTokenUrl = trimOptional(launchedTokenUrl);
+    if (launchedTokenAt !== undefined) {
+      data.launchedTokenAt =
+        typeof launchedTokenAt === "string" && launchedTokenAt.trim().length > 0
+          ? new Date(launchedTokenAt)
+          : null;
+    }
 
     const updated = await prisma.creator.update({
       where: { id: creator.id },

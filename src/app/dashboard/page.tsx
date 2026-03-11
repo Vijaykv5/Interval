@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
 import { toast } from "sonner";
+import { LaunchTokenButton } from "@/components/launch-token-button";
 import { getDialBlinkUrl } from "@/lib/constants";
 import {
   PublicKey,
@@ -27,6 +28,13 @@ type Creator = {
   username: string;
   wallet: string;
   profileImageUrl: string | null;
+  bio: string | null;
+  xAccount: string | null;
+  launchedTokenMint: string | null;
+  launchedTokenName: string | null;
+  launchedTokenSymbol: string | null;
+  launchedTokenUrl: string | null;
+  launchedTokenAt: string | null;
 };
 
 type Booking = {
@@ -344,6 +352,10 @@ export default function Dashboard() {
   const earnings = dashboard?.earnings ?? 0;
   const totalBookings = dashboard?.totalBookings ?? 0;
   const walletBalance = dashboard?.walletBalance ?? null;
+  const profileUrl =
+    typeof window !== "undefined" && creator
+      ? `${window.location.origin}/explore/${creator.username}`
+      : "";
 
   function slotBlinkUrl(slotId: string) {
     if (typeof window === "undefined") return "";
@@ -414,7 +426,7 @@ export default function Dashboard() {
       await signAndSendTransaction({
         transaction: new Uint8Array(txBytes),
         wallet: solanaWallet,
-        chain: "solana:devnet",
+        chain: "solana:mainnet-beta",
       });
 
       toast.success("Withdrawal successful!");
@@ -459,6 +471,55 @@ export default function Dashboard() {
                   <h2 className="text-2xl font-bold text-white tracking-tight">Overview</h2>
                   <p className="text-sm text-white/50 mt-1">Your stats at a glance</p>
                 </div>
+                {creator && (
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-white">
+                        Creator token
+                      </p>
+                      <p className="text-sm text-white/55 mt-1">
+                        Launch your creator token on Bags from the dashboard only.
+                      </p>
+                      {creator.launchedTokenMint && creator.launchedTokenUrl && (
+                        <a
+                          href={creator.launchedTokenUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-block mt-3 text-sm font-medium"
+                          style={{ color: "#ffd28e" }}
+                        >
+                          View {creator.launchedTokenSymbol ? `$${creator.launchedTokenSymbol}` : creator.launchedTokenName ?? "token"} →
+                        </a>
+                      )}
+                    </div>
+                    <LaunchTokenButton
+                      creatorUsername={creator.username}
+                      creatorWallet={creator.wallet}
+                      creatorBio={creator.bio}
+                      creatorImageUrl={creator.profileImageUrl}
+                      creatorXAccount={creator.xAccount}
+                      profileUrl={profileUrl}
+                      existingTokenMint={creator.launchedTokenMint}
+                      existingTokenName={creator.launchedTokenName}
+                      existingTokenSymbol={creator.launchedTokenSymbol}
+                      existingTokenUrl={creator.launchedTokenUrl}
+                      onLaunchSuccess={async (token) => {
+                        setCreator((current) =>
+                          current
+                            ? {
+                                ...current,
+                                launchedTokenMint: token.mint,
+                                launchedTokenName: token.name,
+                                launchedTokenSymbol: token.symbol,
+                                launchedTokenUrl: token.url,
+                                launchedTokenAt: token.launchedAt,
+                              }
+                            : current
+                        );
+                      }}
+                    />
+                  </div>
+                )}
                 <div className="grid gap-5 sm:grid-cols-3">
                   <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-6 overflow-hidden relative group hover:border-white/15 transition-colors">
                     <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />

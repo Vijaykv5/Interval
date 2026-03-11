@@ -3,10 +3,11 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
-const DEVNET_RPC_URLS: string[] = [
-  "https://api.devnet.solana.com",
-  clusterApiUrl("devnet"),
-  ...(process.env.SOLANA_RPC && process.env.SOLANA_RPC.toLowerCase().includes("devnet")
+const network = process.env.SOLANA_NETWORK === "devnet" ? "devnet" : "mainnet-beta";
+const SOLANA_RPC_URLS: string[] = [
+  network === "devnet" ? "https://api.devnet.solana.com" : "https://api.mainnet-beta.solana.com",
+  clusterApiUrl(network),
+  ...(process.env.SOLANA_RPC
     ? [process.env.SOLANA_RPC]
     : []),
 ];
@@ -15,7 +16,7 @@ async function fetchWalletBalanceSol(walletAddress: string): Promise<number | nu
   const pk = new PublicKey(walletAddress);
   const commitments: Array<"confirmed" | "finalized"> = ["finalized", "confirmed"];
 
-  for (const rpcUrl of DEVNET_RPC_URLS) {
+  for (const rpcUrl of SOLANA_RPC_URLS) {
     for (const commitment of commitments) {
       const connection = new Connection(rpcUrl, { commitment });
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -34,7 +35,7 @@ async function fetchWalletBalanceSol(walletAddress: string): Promise<number | nu
             continue;
           }
           if (attempt === 1) {
-            console.warn("Wallet balance RPC error (devnet):", rpcUrl, commitment, err);
+            console.warn(`Wallet balance RPC error (${network}):`, rpcUrl, commitment, err);
           }
         }
       }
