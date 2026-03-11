@@ -25,14 +25,6 @@ const network = process.env.SOLANA_NETWORK === "devnet" ? "devnet" : "mainnet-be
 const chainId = process.env.SOLANA_NETWORK ?? "mainnet-beta";
 const actionVersion = "1";
 
-const SOLANA_RPC_URLS: string[] = [
-  network === "devnet" ? "https://api.devnet.solana.com" : "https://api.mainnet-beta.solana.com",
-  clusterApiUrl(network),
-  ...(process.env.SOLANA_RPC
-    ? [process.env.SOLANA_RPC]
-    : []),
-];
-
 const headers = createActionHeaders({
   chainId,
   actionVersion,
@@ -233,28 +225,9 @@ export async function POST(req: Request) {
     }
 
     const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl(network);
-    let connection = new Connection(rpcUrl);
-
+    const connection = new Connection(rpcUrl);
     const creatorWallet = new PublicKey(slot.creator.wallet);
-    let creatorAccountInfo: Awaited<ReturnType<Connection["getAccountInfo"]>> = null;
-    for (const rpcCandidateUrl of SOLANA_RPC_URLS) {
-      try {
-        const conn = new Connection(rpcCandidateUrl);
-        creatorAccountInfo = await conn.getAccountInfo(creatorWallet, "confirmed");
-        if (creatorAccountInfo) {
-          connection = conn;
-          break;
-        }
-      } catch {
-        // try next RPC
-      }
-    }
-    if (!creatorAccountInfo) {
-      return Response.json(
-        { message: `Creator wallet account not found on chain (${network}). Ensure the creator wallet has received SOL on ${network}.` } satisfies ActionError,
-        { status: 400, headers }
-      );
-    }
+    // No need to check creator account exists: Solana creates the account on first transfer.
     const lamports = Math.floor(slot.price * LAMPORTS_PER_SOL);
 
     if (lamports <= 0) {
