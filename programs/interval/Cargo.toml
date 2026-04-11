@@ -1,0 +1,23 @@
+[package]
+name = "interval"
+version = "0.1.0"
+description = "Interval Anchor program"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "interval"
+
+[features]
+default = []
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+custom-heap = []
+custom-panic = []
+anchor-debug = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = "0.30.1"

@@ -1,0 +1,17 @@
+[workspace]
+members = ["programs/*"]
+resolver = "2"
+
+[features]
+seeds = false
+skip-lint = false
+
+[programs.localnet]
+interval = "11111111111111111111111111111111"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "pnpm anchor test"

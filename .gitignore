@@ -53,3 +53,10 @@ next-env.d.ts
 
 /src/generated/prisma
 .env
+
+# Anchor / Solana program artifacts
+/target/
+/.anchor/
+/programs/*/target/
+/programs/*/idl/
+/programs/*/deploy/
