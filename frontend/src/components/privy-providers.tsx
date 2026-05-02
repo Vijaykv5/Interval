@@ -1,6 +1,7 @@
 "use client";
 
 import { PrivyProvider } from "@privy-io/react-auth";
+import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
 import { createSolanaRpc } from "@solana/rpc";
 import { createSolanaRpcSubscriptions } from "@solana/rpc-subscriptions";
 import { ReactNode } from "react";
@@ -15,10 +16,20 @@ const mainnetRpcUrl =
 const mainnetWsUrl = mainnetRpcUrl
   .replace(/^https:/, "wss:")
   .replace(/^http:/, "ws:");
+const solanaConnectors = toSolanaWalletConnectors();
 
 export function PrivyProviders({ children }: { children: ReactNode }) {
   if (!appId) {
-    return <>{children}</>;
+    return (
+      <main className="flex min-h-screen items-center justify-center px-6 text-center text-white">
+        <div className="max-w-md space-y-3">
+          <h1 className="text-2xl font-semibold">Privy is not configured</h1>
+          <p className="text-sm text-white/70">
+            Add NEXT_PUBLIC_PRIVY_APP_ID to your frontend environment to enable wallet login.
+          </p>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -29,6 +40,11 @@ export function PrivyProviders({ children }: { children: ReactNode }) {
         embeddedWallets: {
           solana: {
             createOnLogin: "all-users",
+          },
+        },
+        externalWallets: {
+          solana: {
+            connectors: solanaConnectors,
           },
         },
         solana: {
