@@ -22,7 +22,7 @@ export function BetaBanner() {
 
   return (
     <div className="relative z-20 flex min-h-12 w-full items-center justify-center bg-[#ffd28e] px-12 py-3 text-center text-sm font-semibold text-[#111111] shadow-[0_1px_0_rgba(0,0,0,0.16)] sm:text-base">
-      <p className="leading-snug">Interval is currently in beta - thanks for trying it while we keep improving.</p>
+      <p className="leading-snug">Interval is currently in beta - thanks for trying it while we keep improving it!</p>
       <button
         type="button"
         aria-label="Close beta notice"
