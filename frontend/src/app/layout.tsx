@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Press_Start_2P, Bebas_Neue } from "next/font/google";
 import localFont from "next/font/local";
 import { Toaster } from "sonner";
+import { BetaBanner } from "@/components/beta-banner";
 import { PrivyProviders } from "@/components/privy-providers";
 import "./globals.css";
 
@@ -62,6 +63,7 @@ export default function RootLayout({
         <div className="bg-starfield" aria-hidden />
         <div className="bg-orbit-glow" aria-hidden />
         <div className="relative z-10 min-h-screen bg-transparent">
+          <BetaBanner />
           <PrivyProviders>{children}</PrivyProviders>
           <Toaster
             position="bottom-right"
