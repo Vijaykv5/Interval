@@ -1,9 +1,11 @@
 # Anchor build outputs
 /target/
 /.anchor/
+/test-ledger/
 /programs/*/target/
 /programs/*/idl/
 /programs/*/deploy/
 
 # Local Rust/Anchor artifacts
 *.rs.bk
+*.log

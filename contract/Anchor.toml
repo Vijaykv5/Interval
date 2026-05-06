@@ -7,11 +7,14 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-interval = "11111111111111111111111111111111"
+interval = "6GfKzK6QZ3xMaRgmvriLwqtSAeMKn9vPvwUwx1z971TY"
 
 [provider]
 cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
+[test]
+startup_wait = 10000
+
 [scripts]
-test = "pnpm anchor test"
+test = "NODE_PATH=../frontend/node_modules node --test tests/*.cjs"
