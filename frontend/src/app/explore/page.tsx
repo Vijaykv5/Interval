@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 type SlotOption = {
   id: string;
   price: number;
+  currency: "SOL" | "PUSD";
   startTime: string;
   endTime: string;
 };
@@ -22,7 +23,7 @@ type Creator = {
   launchedTokenSymbol?: string | null;
   launchedTokenUrl?: string | null;
   launchedTokenAt?: string | null;
-  firstAvailableSlot: { id: string; price: number } | null;
+  firstAvailableSlot: { id: string; price: number; currency: "SOL" | "PUSD" } | null;
   availableSlots: SlotOption[];
 };
 

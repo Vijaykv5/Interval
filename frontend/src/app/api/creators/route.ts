@@ -26,11 +26,12 @@ export async function GET() {
       launchedTokenUrl: c.launchedTokenUrl,
       launchedTokenAt: c.launchedTokenAt?.toISOString() ?? null,
       firstAvailableSlot: c.slots[0]
-        ? { id: c.slots[0].id, price: c.slots[0].price }
+        ? { id: c.slots[0].id, price: c.slots[0].price, currency: c.slots[0].currency }
         : null,
       availableSlots: c.slots.map((s) => ({
         id: s.id,
         price: s.price,
+        currency: s.currency,
         startTime: s.startTime.toISOString(),
         endTime: s.endTime.toISOString(),
       })),

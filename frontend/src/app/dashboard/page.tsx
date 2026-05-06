@@ -19,6 +19,7 @@ type Slot = {
   startTime: string;
   endTime: string;
   price: number;
+  currency: "SOL" | "PUSD";
   status: string;
   meetLink?: string | null;
 };
@@ -41,6 +42,10 @@ type Booking = {
   id: string;
   payerWallet: string;
   amountSol: number;
+  amount: number;
+  currency: "SOL" | "PUSD";
+  txSignature: string | null;
+  status: string;
   name: string | null;
   email: string | null;
   callFor: string | null;
@@ -51,6 +56,7 @@ type Booking = {
 type DashboardData = {
   upcomingMeetings: Slot[];
   earnings: number;
+  earningsByCurrency: { SOL: number; PUSD: number };
   totalBookings: number;
   mySlots: Slot[];
   bookings: Booking[];
@@ -73,6 +79,10 @@ function formatMeetingTime(iso: string) {
     minute: "2-digit",
     hour12: true,
   });
+}
+
+function formatAmount(amount: number, currency: "SOL" | "PUSD") {
+  return `${Number(amount).toFixed(currency === "SOL" ? 4 : 2)} ${currency}`;
 }
 
 /** Returns YYYY-MM-DD for today (local) */
@@ -116,6 +126,7 @@ export default function Dashboard() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [price, setPrice] = useState("");
+  const [currency, setCurrency] = useState<"SOL" | "PUSD">("SOL");
   const [createError, setCreateError] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -158,6 +169,7 @@ export default function Dashboard() {
       setDashboard({
         upcomingMeetings: [],
         earnings: 0,
+        earningsByCurrency: { SOL: 0, PUSD: 0 },
         totalBookings: 0,
         mySlots: [],
         bookings: [],
@@ -177,6 +189,7 @@ export default function Dashboard() {
             setDashboard({
               upcomingMeetings: [],
               earnings: 0,
+              earningsByCurrency: { SOL: 0, PUSD: 0 },
               totalBookings: 0,
               mySlots: [],
               bookings: [],
@@ -205,6 +218,7 @@ export default function Dashboard() {
           setDashboard({
             upcomingMeetings: [],
             earnings: 0,
+            earningsByCurrency: { SOL: 0, PUSD: 0 },
             totalBookings: 0,
             mySlots: [],
             bookings: [],
@@ -216,6 +230,7 @@ export default function Dashboard() {
           setDashboard({
             upcomingMeetings: [],
             earnings: 0,
+            earningsByCurrency: { SOL: 0, PUSD: 0 },
             totalBookings: 0,
             mySlots: [],
             bookings: [],
@@ -280,7 +295,7 @@ export default function Dashboard() {
       return;
     }
     if (Number.isNaN(priceNum) || priceNum < 0) {
-      setCreateError("Please enter a valid price (0 or more SOL).");
+      setCreateError(`Please enter a valid price (0 or more ${currency}).`);
       return;
     }
     setCreating(true);
@@ -293,6 +308,7 @@ export default function Dashboard() {
           startTime: startDate.toISOString(),
           endTime: endDate.toISOString(),
           price: priceNum,
+          currency,
         }),
       });
       const data = await res.json();
@@ -300,6 +316,7 @@ export default function Dashboard() {
         setStartTime("");
         setEndTime("");
         setPrice("");
+        setCurrency("SOL");
         setCreateError(null);
         const blinkUrl = data.blinkUrl as string | undefined;
         if (blinkUrl) {
@@ -350,6 +367,7 @@ export default function Dashboard() {
   const mySlots = dashboard?.mySlots ?? [];
   const bookings = dashboard?.bookings ?? [];
   const earnings = dashboard?.earnings ?? 0;
+  const earningsByCurrency = dashboard?.earningsByCurrency ?? { SOL: earnings, PUSD: 0 };
   const totalBookings = dashboard?.totalBookings ?? 0;
   const walletBalance = dashboard?.walletBalance ?? null;
   const profileUrl =
@@ -549,9 +567,11 @@ export default function Dashboard() {
                     <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
                     <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest">Total earnings</p>
                     <p className="mt-3 text-2xl font-bold text-white tabular-nums">
-                      {earnings.toFixed(2)} <span className="text-lg font-semibold" style={{ color: "#ffd28e" }}>SOL</span>
+                      {earningsByCurrency.SOL.toFixed(4)} <span className="text-lg font-semibold" style={{ color: "#ffd28e" }}>SOL</span>
                     </p>
-                    <p className="text-xs text-white/45 mt-1">From {totalBookings} booking{totalBookings !== 1 ? "s" : ""}</p>
+                    <p className="text-xs text-white/45 mt-1">
+                      {earningsByCurrency.PUSD.toFixed(2)} PUSD · {totalBookings} booking{totalBookings !== 1 ? "s" : ""}
+                    </p>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-6 overflow-hidden relative group hover:border-white/15 transition-colors">
                     <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
@@ -618,7 +638,7 @@ export default function Dashboard() {
                           <div className="min-w-0">
                             <p className="font-medium text-white">{formatMeetingDate(slot.startTime)}</p>
                             <p className="text-sm text-white/60">
-                              {formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)} · <span style={{ color: "#ffd28e" }}>{Number(slot.price).toFixed(2)} SOL</span>
+                              {formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)} · <span style={{ color: "#ffd28e" }}>{formatAmount(slot.price, slot.currency)}</span>
                             </p>
                             {slot.meetLink && (
                               <a href={slot.meetLink} target="_blank" rel="noopener noreferrer" className="text-sm mt-1 inline-block hover:opacity-90" style={{ color: "#ffd28e" }}>
@@ -680,9 +700,9 @@ export default function Dashboard() {
                         >
                           <div className="flex items-center gap-3">
                             <p className="font-medium text-white">{formatMeetingDate(b.slot.startTime)}</p>
-                            <p className="text-sm" style={{ color: "#ffd28e" }}>{Number(b.amountSol).toFixed(2)} SOL</p>
+                            <p className="text-sm" style={{ color: "#ffd28e" }}>{formatAmount(b.amount, b.currency)}</p>
                           </div>
-                          <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90">Paid</span>
+                          <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90">{b.status}</span>
                         </li>
                       ))}
                     </ul>
@@ -720,7 +740,7 @@ export default function Dashboard() {
                   <div className="p-5 overflow-y-auto flex-1 space-y-4">
                     <div>
                       <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-1">Date & amount</p>
-                      <p className="text-white">{formatMeetingDate(selectedBooking.slot.startTime)} · <span style={{ color: "#ffd28e" }}>{Number(selectedBooking.amountSol).toFixed(2)} SOL</span></p>
+                      <p className="text-white">{formatMeetingDate(selectedBooking.slot.startTime)} · <span style={{ color: "#ffd28e" }}>{formatAmount(selectedBooking.amount, selectedBooking.currency)}</span></p>
                     </div>
                     <div>
                       <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-1">Slot</p>
@@ -757,6 +777,12 @@ export default function Dashboard() {
                       <div>
                         <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-1">Purpose</p>
                         <p className="text-white/90">{selectedBooking.callFor}</p>
+                      </div>
+                    )}
+                    {selectedBooking.txSignature && (
+                      <div>
+                        <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-1">Transaction</p>
+                        <p className="text-sm font-mono text-white/80 break-all">{selectedBooking.txSignature}</p>
                       </div>
                     )}
                   </div>
@@ -910,18 +936,32 @@ export default function Dashboard() {
                       />
                       <p className="text-xs text-white/40">Or edit manually after picking duration</p>
                     </div>
-                    <div className="pt-2 border-t border-white/10">
-                      <label htmlFor="price" className="block text-sm font-medium text-white/90 mb-2">Price (SOL)</label>
-                      <input
-                        id="price"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        value={price}
-                        onChange={(e) => setPrice(e.target.value)}
-                        className="w-full rounded-xl border border-white/20 bg-black/40 px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#ffd28e]/50 focus:border-[#ffd28e]/40 transition-colors"
-                      />
+                    <div className="grid gap-3 sm:grid-cols-[1fr_auto] pt-2 border-t border-white/10">
+                      <div>
+                        <label htmlFor="price" className="block text-sm font-medium text-white/90 mb-2">Price</label>
+                        <input
+                          id="price"
+                          type="number"
+                          step={currency === "SOL" ? "0.0001" : "0.01"}
+                          min="0"
+                          placeholder="0.00"
+                          value={price}
+                          onChange={(e) => setPrice(e.target.value)}
+                          className="w-full rounded-xl border border-white/20 bg-black/40 px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#ffd28e]/50 focus:border-[#ffd28e]/40 transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="currency" className="block text-sm font-medium text-white/90 mb-2">Currency</label>
+                        <select
+                          id="currency"
+                          value={currency}
+                          onChange={(e) => setCurrency(e.target.value as "SOL" | "PUSD")}
+                          className="w-full rounded-xl border border-white/20 bg-black/40 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#ffd28e]/50 focus:border-[#ffd28e]/40 transition-colors [color-scheme:dark]"
+                        >
+                          <option value="SOL">SOL</option>
+                          <option value="PUSD">PUSD</option>
+                        </select>
+                      </div>
                     </div>
                     <button
                       type="submit"

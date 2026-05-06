@@ -3,6 +3,8 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDialBlinkUrl } from "@/lib/constants";
+import { SlotBookingButton } from "@/components/slot-booking-button";
+import { SiteNav } from "@/components/site-nav";
 import { prisma } from "@/lib/prisma";
 
 type CreatorPageProps = {
@@ -82,8 +84,9 @@ export default async function CreatorPage({ params }: CreatorPageProps) {
   const baseUrl = await getBaseUrl();
 
   return (
-    <div className="min-h-screen px-4 sm:px-6 py-8 sm:py-12 text-white">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen text-white">
+      <SiteNav />
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
         <div className="mb-8 sm:mb-10">
           <Link
             href="/explore"
@@ -193,13 +196,22 @@ export default async function CreatorPage({ params }: CreatorPageProps) {
 
                       <div className="sm:text-right">
                         <p className="text-base font-semibold text-white">
-                          {slot.price % 1 === 0 ? slot.price : slot.price.toFixed(2)} SOL
+                          {slot.price % 1 === 0 ? slot.price : slot.price.toFixed(slot.currency === "SOL" ? 4 : 2)} {slot.currency}
                         </p>
                         <p className="text-sm text-white/50 mt-1">
                           Book via Blink →
                         </p>
                       </div>
                     </a>
+                    <div className="mt-3 sm:flex sm:justify-end">
+                      <SlotBookingButton
+                        slotId={slot.id}
+                        creatorId={creator.id}
+                        creatorWallet={creator.wallet}
+                        price={slot.price}
+                        currency={slot.currency}
+                      />
+                    </div>
                   </li>
                 );
               })}

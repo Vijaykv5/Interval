@@ -13,7 +13,8 @@ export type BookingConfirmationParams = {
   endTime: Date;
   joinUrl: string;
   meetLink: string | null;
-  amountSol: number;
+  amount: number;
+  currency: "SOL" | "PUSD";
 };
 
 export async function sendBookingConfirmationEmail(
@@ -24,7 +25,7 @@ export async function sendBookingConfirmationEmail(
     return { ok: false, error: "Email not configured" };
   }
 
-  const { to, creatorName, startTime, endTime, joinUrl, meetLink, amountSol } = params;
+  const { to, creatorName, startTime, endTime, joinUrl, meetLink, amount, currency } = params;
 
   const testOnlyEmail = process.env.RESEND_TEST_EMAIL?.trim();
   if (testOnlyEmail && to.toLowerCase() !== testOnlyEmail.toLowerCase()) {
@@ -39,7 +40,7 @@ export async function sendBookingConfirmationEmail(
   });
   const timeStr = `${startTime.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })} – ${endTime.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`;
 
-  const priceLabel = amountSol % 1 === 0 ? amountSol.toString() : amountSol.toFixed(2);
+  const priceLabel = amount % 1 === 0 ? amount.toString() : amount.toFixed(currency === "SOL" ? 4 : 2);
 
   const html = `
 <!DOCTYPE html>
@@ -59,7 +60,7 @@ export async function sendBookingConfirmationEmail(
       <table style="width:100%;border-collapse:collapse;margin:0 0 20px;">
         <tr><td style="padding:8px 0;font-size:14px;color:#6b7280;">Date</td><td style="padding:8px 0;font-size:14px;color:#111827;text-align:right;">${dateStr}</td></tr>
         <tr><td style="padding:8px 0;font-size:14px;color:#6b7280;">Time</td><td style="padding:8px 0;font-size:14px;color:#111827;text-align:right;">${timeStr}</td></tr>
-        <tr><td style="padding:8px 0;font-size:14px;color:#6b7280;">Amount</td><td style="padding:8px 0;font-size:14px;color:#111827;text-align:right;">${priceLabel} SOL</td></tr>
+        <tr><td style="padding:8px 0;font-size:14px;color:#6b7280;">Amount</td><td style="padding:8px 0;font-size:14px;color:#111827;text-align:right;">${priceLabel} ${currency}</td></tr>
       </table>
       <a href="${joinUrl}" style="display:block;text-align:center;background:#111827;color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:14px 20px;border-radius:8px;margin:20px 0;">View booking & meeting link</a>
       ${meetLink ? `<p style="margin:12px 0 0;font-size:13px;color:#6b7280;">Or join the meeting directly: <a href="${meetLink}" style="color:#2563eb;">${meetLink}</a></p>` : ""}

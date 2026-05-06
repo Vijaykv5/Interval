@@ -65,7 +65,7 @@ export async function GET(req: Request) {
     const now = new Date();
     const walletForBalance = walletParam ?? creator?.wallet ?? null;
 
-    const [upcomingMeetings, earningsResult, totalBookings, mySlots, bookings, walletBalance] =
+    const [upcomingMeetings, earningsResult, earningsByCurrencyRows, totalBookings, mySlots, bookings, walletBalance] =
       await Promise.all([
         prisma.slot.findMany({
           where: {
@@ -81,6 +81,14 @@ export async function GET(req: Request) {
             status: "booked",
           },
           _sum: { price: true },
+        }),
+        prisma.booking.groupBy({
+          by: ["currency"],
+          where: {
+            creatorId,
+            status: "confirmed",
+          },
+          _sum: { amount: true },
         }),
         prisma.slot.count({
           where: {
@@ -108,10 +116,18 @@ export async function GET(req: Request) {
       ]);
 
     const earnings = earningsResult._sum.price ?? 0;
+    const earningsByCurrency = earningsByCurrencyRows.reduce(
+      (acc, row) => ({
+        ...acc,
+        [row.currency]: row._sum.amount ?? 0,
+      }),
+      { SOL: 0, PUSD: 0 }
+    );
 
     return NextResponse.json({
       upcomingMeetings,
       earnings,
+      earningsByCurrency,
       totalBookings,
       mySlots,
       bookings,

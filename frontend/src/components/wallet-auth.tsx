@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { usePrivy } from "@privy-io/react-auth";
 import { useExportWallet, useWallets } from "@privy-io/react-auth/solana";
 
@@ -332,6 +333,15 @@ export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletA
               : "border-gray-600 bg-gray-800"
           }`}
         >
+          <Link
+            href="/profile"
+            onClick={() => setDropdownOpen(false)}
+            className={`block px-4 py-2.5 text-sm font-medium transition-colors ${
+              isLanding || isSidebar ? "text-white/80 hover:bg-white/10 hover:text-white" : "text-gray-200 hover:bg-gray-700"
+            }`}
+          >
+            Profile
+          </Link>
           <button
             type="button"
             onClick={() => {

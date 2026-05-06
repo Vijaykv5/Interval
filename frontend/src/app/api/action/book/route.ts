@@ -14,6 +14,12 @@ import {
   LAMPORTS_PER_SOL,
   clusterApiUrl,
 } from "@solana/web3.js";
+import {
+  createAssociatedTokenAccountInstruction,
+  createTransferInstruction,
+  getAccount,
+  getAssociatedTokenAddress,
+} from "@solana/spl-token";
 import { MEMO_PROGRAM_ID } from "@solana/actions";
 import { prisma } from "@/lib/prisma";
 import { ACTION_ICON_FALLBACK } from "@/lib/constants";
@@ -24,6 +30,8 @@ export const dynamic = "force-dynamic";
 const network = process.env.SOLANA_NETWORK === "devnet" ? "devnet" : "mainnet-beta";
 const chainId = process.env.SOLANA_NETWORK ?? "mainnet-beta";
 const actionVersion = "1";
+const PUSD_MINT = new PublicKey("CzzgUBvxaMLwMhVSLgqJn3npmxoTo6nzMNQPAnwtHF3s");
+const PUSD_DECIMALS = 6;
 
 const headers = createActionHeaders({
   chainId,
@@ -125,8 +133,8 @@ export async function GET(req: Request) {
     const end = new Date(slot.endTime).toLocaleString("en-US", dateTimeOptions);
 
     const priceLabel =
-      slot.price % 1 === 0 ? slot.price.toString() : slot.price.toFixed(2);
-    const description = `Book a call with ${slot.creator.username}. ${start} – ${end}. Price: ${priceLabel} SOL.`;
+      slot.price % 1 === 0 ? slot.price.toString() : slot.price.toFixed(slot.currency === "SOL" ? 4 : 2);
+    const description = `Book a call with ${slot.creator.username}. ${start} – ${end}. Price: ${priceLabel} ${slot.currency}.`;
 
     const requestUrl = new URL(req.url);
     const baseUrl = (
@@ -141,13 +149,13 @@ export async function GET(req: Request) {
       icon: getActionIcon(slotId, slot, baseUrl),
       title: "Book meeting slot",
       description,
-      label: `Book for ${priceLabel} SOL`,
+      label: `Book for ${priceLabel} ${slot.currency}`,
       links: {
         actions: [
           {
             type: "transaction",
             href: actionHref,
-            label: `Book for ${priceLabel} SOL`,
+            label: `Book for ${priceLabel} ${slot.currency}`,
             parameters: [
               { name: "name", label: "Your name", type: "text", required: true, layout: "row" },
               { name: "email", label: "Email", type: "email", required: true, layout: "row" },
@@ -227,10 +235,12 @@ export async function POST(req: Request) {
     const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl(network);
     const connection = new Connection(rpcUrl);
     const creatorWallet = new PublicKey(slot.creator.wallet);
-    // No need to check creator account exists: Solana creates the account on first transfer.
-    const lamports = Math.floor(slot.price * LAMPORTS_PER_SOL);
+    const amountBaseUnits =
+      slot.currency === "SOL"
+        ? BigInt(Math.floor(slot.price * LAMPORTS_PER_SOL))
+        : BigInt(Math.round(slot.price * 10 ** PUSD_DECIMALS));
 
-    if (lamports <= 0) {
+    if (amountBaseUnits <= BigInt(0)) {
       return Response.json(
         { message: "Invalid slot price" } satisfies ActionError,
         { status: 400, headers }
@@ -242,11 +252,51 @@ export async function POST(req: Request) {
     const email = typeof data.email === "string" ? data.email.trim() : "";
     const callFor = typeof data.callFor === "string" ? data.callFor.trim() : "";
 
-    const transferIx = SystemProgram.transfer({
-      fromPubkey: account,
-      toPubkey: creatorWallet,
-      lamports,
-    });
+    const paymentIxs: TransactionInstruction[] = [];
+
+    if (slot.currency === "SOL") {
+      paymentIxs.push(
+        SystemProgram.transfer({
+          fromPubkey: account,
+          toPubkey: creatorWallet,
+          lamports: Number(amountBaseUnits),
+        })
+      );
+    } else {
+      const userAta = await getAssociatedTokenAddress(PUSD_MINT, account);
+      const creatorAta = await getAssociatedTokenAddress(PUSD_MINT, creatorWallet);
+      try {
+        const userAccount = await getAccount(connection, userAta, "confirmed");
+        if (userAccount.amount < amountBaseUnits) {
+          return Response.json(
+            { message: `Insufficient PUSD. You need ${slot.price} PUSD.` } satisfies ActionError,
+            { status: 400, headers }
+          );
+        }
+      } catch {
+        return Response.json(
+          { message: "You do not have a PUSD token account for this wallet." } satisfies ActionError,
+          { status: 400, headers }
+        );
+      }
+
+      try {
+        await getAccount(connection, creatorAta, "confirmed");
+      } catch {
+        paymentIxs.push(
+          createAssociatedTokenAccountInstruction(
+            account,
+            creatorAta,
+            creatorWallet,
+            PUSD_MINT
+          )
+        );
+      }
+
+      paymentIxs.push(
+        createTransferInstruction(userAta, creatorAta, account, amountBaseUnits)
+      );
+    }
 
     const memoParts: string[] = [
       `Book slot ${slotId}`,
@@ -270,7 +320,10 @@ export async function POST(req: Request) {
           slotId: slot.id,
           creatorId: slot.creatorId,
           payerWallet: account.toBase58(),
-          amountSol: slot.price,
+          amountSol: slot.currency === "SOL" ? slot.price : 0,
+          amount: slot.price,
+          currency: slot.currency,
+          status: "confirmed",
           name: name || null,
           email: email || null,
           callFor: callFor || null,
@@ -293,9 +346,9 @@ export async function POST(req: Request) {
       feePayer: account,
       blockhash,
       lastValidBlockHeight,
-    })
-      .add(transferIx)
-      .add(memoIx);
+    });
+    paymentIxs.forEach((ix) => transaction.add(ix));
+    transaction.add(memoIx);
 
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
@@ -313,7 +366,8 @@ export async function POST(req: Request) {
         endTime: new Date(slot.endTime),
         joinUrl,
         meetLink: slot.meetLink,
-        amountSol: slot.price,
+        amount: slot.price,
+        currency: slot.currency,
       }).catch((err) => console.error("Confirmation email failed:", err));
     }
 
@@ -321,7 +375,7 @@ export async function POST(req: Request) {
       fields: {
         type: "transaction",
         transaction,
-        message: `Pay ${slot.price} SOL to book slot with ${slot.creator.username}.${meetMsg}`,
+        message: `Pay ${slot.price} ${slot.currency} to book slot with ${slot.creator.username}.${meetMsg}`,
       },
     });
 

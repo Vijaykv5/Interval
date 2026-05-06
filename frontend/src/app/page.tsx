@@ -1,9 +1,8 @@
 import Image from "next/image";
-import Link from "next/link";
-import { WalletAuth } from "@/components/wallet-auth";
 import { LandingCtas } from "@/components/landing-ctas";
 import { LandingOnboardingGate } from "@/components/landing-onboarding-gate";
 import { CursorGlow } from "@/components/cursor-glow";
+import { SiteNav } from "@/components/site-nav";
 
 const CREATOR_CARD_TEMPLATES = [
   { src: "/images/6.png", alt: "Creator", accent: "var(--interval-card-rare)", price: "2 SOL", priceLabel: "/ book", description: "Book a 1:1 slot. Quick calls and AMAs." },
@@ -31,30 +30,7 @@ export default function Home() {
     <LandingOnboardingGate>
     <div className="min-h-screen h-screen max-h-screen flex flex-col text-white overflow-hidden relative">
       <CursorGlow />
-      <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 shrink-0 w-full">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 shrink-0 py-1 pr-1 rounded transition-opacity hover:opacity-90 focus:outline-none"
-        >
-          <span
-            className="text-lg sm:text-xl font-bold tracking-[0.12em] uppercase"
-            style={{ color: "#ffd28e", fontFamily: "var(--font-archivo-condensed), sans-serif" }}
-          >
-            INTERVAL
-          </span>
-          <Image
-            src="/favicon.png"
-            alt=""
-            width={24}
-            height={24}
-            className="h-5 w-5 sm:h-6 sm:w-6 object-contain flex-shrink-0 opacity-95"
-            priority
-          />
-        </Link>
-        <div className="min-w-[100px] flex justify-end">
-          <WalletAuth variant="landing" unauthenticatedLabel="SIGN IN" />
-        </div>
-      </header>
+      <SiteNav />
 
       {/* Top: heading, subheading, CTAs — pulled down a bit */}
       <section className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 pt-12 sm:pt-24 pb-8 md:pb-12 sm:pb-16 text-center">

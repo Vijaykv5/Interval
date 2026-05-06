@@ -5,6 +5,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { wallet, startTime, endTime, price } = body;
+    const currency = body.currency === "PUSD" ? "PUSD" : "SOL";
 
     if (!wallet || typeof wallet !== "string" || wallet.length === 0) {
       return NextResponse.json(
@@ -29,6 +30,7 @@ export async function POST(req: Request) {
         startTime: new Date(startTime),
         endTime: new Date(endTime),
         price: Number(price),
+        currency,
         status: "available",
       },
     });

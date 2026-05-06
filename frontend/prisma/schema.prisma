@@ -30,6 +30,7 @@ model Slot {
   startTime DateTime
   endTime   DateTime
   price     Float
+  currency  Currency @default(SOL)
   status    String   @default("available")
   meetLink  String?
   booking   Booking?
@@ -43,10 +44,19 @@ model Booking {
   creatorId   String
   payerWallet String
   amountSol   Float
+  amount      Float    @default(0)
+  currency    Currency @default(SOL)
+  txSignature String?  @map("tx_signature")
+  status      String   @default("confirmed")
   name        String?
   email       String?
   callFor     String?
   signature   String?
   accessToken String?
   createdAt   DateTime @default(now())
+}
+
+enum Currency {
+  SOL
+  PUSD
 }
