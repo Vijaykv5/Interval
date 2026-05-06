@@ -252,14 +252,14 @@ export default function Home() {
         <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#ffd28e]/10 to-transparent" />
         <div
-          className="pointer-events-none absolute -top-16 left-1/2 -translate-x-1/2 whitespace-nowrap text-[26vw] font-extrabold leading-none text-white/[0.08] sm:-top-24"
+          className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 whitespace-nowrap text-center text-[22vw] font-extrabold leading-none text-white/[0.08]"
           style={{ fontFamily: "var(--font-archivo-condensed), sans-serif" }}
         >
-          Interval
+          INTERVAL
         </div>
 
         <div className="relative mx-auto flex max-w-7xl flex-col gap-8 text-sm text-white/60 md:flex-row md:items-center md:justify-between">
-          <p>© 2026 Interval</p>
+          <p>© 2026 INTERVAL</p>
           <nav aria-label="Footer" className="flex flex-wrap gap-x-8 gap-y-3">
             <a className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white" href="/">
               Home
