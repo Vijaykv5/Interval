@@ -1,9 +1,12 @@
-use anchor_lang::prelude::*;
+use anchor_lang::{
+    prelude::*,
+    system_program::{transfer, Transfer},
+};
 
 use crate::{
-    constants::{CREATOR_SEED, PLATFORM_SEED},
+    constants::{BOOKING_SEED, CREATOR_SEED, PLATFORM_SEED},
     errors::IntervalError,
-    state::{CreatorProfile, Platform},
+    state::{BookingEscrow, BookingStatus, CreatorProfile, Platform},
 };
 
 pub fn initialize_platform(ctx: Context<InitializePlatform>) -> Result<()> {
@@ -20,6 +23,90 @@ pub fn register_creator(ctx: Context<RegisterCreator>) -> Result<()> {
     creator_profile.authority = ctx.accounts.authority.key();
     creator_profile.is_active = true;
     creator_profile.bump = ctx.bumps.creator_profile;
+
+    Ok(())
+}
+
+pub fn book_slot(
+    ctx: Context<BookSlot>,
+    booking_id: [u8; 32],
+    slot_hash: [u8; 32],
+    amount: u64,
+    scheduled_end_time: i64,
+) -> Result<()> {
+    require!(amount > 0, IntervalError::InvalidBookingAmount);
+    require!(
+        ctx.accounts.creator_profile.is_active,
+        IntervalError::CreatorInactive
+    );
+
+    let clock = Clock::get()?;
+    require!(
+        scheduled_end_time > clock.unix_timestamp,
+        IntervalError::InvalidScheduledEndTime
+    );
+
+    let booking_escrow = &mut ctx.accounts.booking_escrow;
+    booking_escrow.booking_id = booking_id;
+    booking_escrow.slot_hash = slot_hash;
+    booking_escrow.buyer = ctx.accounts.buyer.key();
+    booking_escrow.creator = ctx.accounts.creator_profile.authority;
+    booking_escrow.amount = amount;
+    booking_escrow.scheduled_end_time = scheduled_end_time;
+    booking_escrow.status = BookingStatus::Funded;
+    booking_escrow.bump = ctx.bumps.booking_escrow;
+
+    let transfer_accounts = Transfer {
+        from: ctx.accounts.buyer.to_account_info(),
+        to: ctx.accounts.booking_escrow.to_account_info(),
+    };
+    let transfer_ctx = CpiContext::new(
+        ctx.accounts.system_program.to_account_info(),
+        transfer_accounts,
+    );
+    transfer(transfer_ctx, amount)?;
+
+    Ok(())
+}
+
+pub fn release_funds(ctx: Context<ReleaseFunds>) -> Result<()> {
+    let booking_escrow = &mut ctx.accounts.booking_escrow;
+    require!(
+        booking_escrow.status == BookingStatus::Funded,
+        IntervalError::InvalidBookingStatus
+    );
+
+    let clock = Clock::get()?;
+    require!(
+        clock.unix_timestamp >= booking_escrow.scheduled_end_time,
+        IntervalError::BookingNotEnded
+    );
+
+    booking_escrow.status = BookingStatus::Released;
+    booking_escrow.sub_lamports(booking_escrow.amount)?;
+    ctx.accounts
+        .authority
+        .add_lamports(booking_escrow.amount)?;
+
+    Ok(())
+}
+
+pub fn refund_booking(ctx: Context<RefundBooking>) -> Result<()> {
+    let booking_escrow = &mut ctx.accounts.booking_escrow;
+    require!(
+        booking_escrow.status == BookingStatus::Funded,
+        IntervalError::InvalidBookingStatus
+    );
+
+    let signer = ctx.accounts.signer.key();
+    require!(
+        signer == ctx.accounts.creator_profile.authority || signer == ctx.accounts.platform.admin,
+        IntervalError::Unauthorized
+    );
+
+    booking_escrow.status = BookingStatus::Refunded;
+    booking_escrow.sub_lamports(booking_escrow.amount)?;
+    ctx.accounts.buyer.add_lamports(booking_escrow.amount)?;
 
     Ok(())
 }
@@ -58,4 +145,83 @@ pub struct RegisterCreator<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(booking_id: [u8; 32])]
+pub struct BookSlot<'info> {
+    #[account(
+        seeds = [PLATFORM_SEED],
+        bump = platform.bump,
+        constraint = !platform.is_paused @ IntervalError::PlatformPaused
+    )]
+    pub platform: Account<'info, Platform>,
+    #[account(
+        seeds = [CREATOR_SEED, creator_profile.authority.as_ref()],
+        bump = creator_profile.bump
+    )]
+    pub creator_profile: Account<'info, CreatorProfile>,
+    #[account(
+        init,
+        payer = buyer,
+        space = BookingEscrow::SPACE,
+        seeds = [BOOKING_SEED, &booking_id],
+        bump
+    )]
+    pub booking_escrow: Account<'info, BookingEscrow>,
+    #[account(mut)]
+    pub buyer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ReleaseFunds<'info> {
+    #[account(
+        seeds = [PLATFORM_SEED],
+        bump = platform.bump,
+        constraint = !platform.is_paused @ IntervalError::PlatformPaused
+    )]
+    pub platform: Account<'info, Platform>,
+    #[account(
+        seeds = [CREATOR_SEED, authority.key().as_ref()],
+        bump = creator_profile.bump,
+        has_one = authority @ IntervalError::Unauthorized
+    )]
+    pub creator_profile: Account<'info, CreatorProfile>,
+    #[account(
+        mut,
+        close = buyer,
+        seeds = [BOOKING_SEED, &booking_escrow.booking_id],
+        bump = booking_escrow.bump,
+        constraint = booking_escrow.creator == authority.key() @ IntervalError::Unauthorized,
+        constraint = booking_escrow.buyer == buyer.key() @ IntervalError::Unauthorized
+    )]
+    pub booking_escrow: Account<'info, BookingEscrow>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(mut)]
+    pub buyer: SystemAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct RefundBooking<'info> {
+    #[account(seeds = [PLATFORM_SEED], bump = platform.bump)]
+    pub platform: Account<'info, Platform>,
+    #[account(
+        seeds = [CREATOR_SEED, creator_profile.authority.as_ref()],
+        bump = creator_profile.bump
+    )]
+    pub creator_profile: Account<'info, CreatorProfile>,
+    #[account(
+        mut,
+        close = buyer,
+        seeds = [BOOKING_SEED, &booking_escrow.booking_id],
+        bump = booking_escrow.bump,
+        constraint = booking_escrow.creator == creator_profile.authority @ IntervalError::Unauthorized,
+        constraint = booking_escrow.buyer == buyer.key() @ IntervalError::Unauthorized
+    )]
+    pub booking_escrow: Account<'info, BookingEscrow>,
+    pub signer: Signer<'info>,
+    #[account(mut)]
+    pub buyer: SystemAccount<'info>,
 }

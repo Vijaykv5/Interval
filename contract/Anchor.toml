@@ -16,5 +16,8 @@ wallet = "~/.config/solana/id.json"
 [test]
 startup_wait = 10000
 
+[test.validator]
+rpc_port = 8897
+
 [scripts]
 test = "NODE_PATH=../frontend/node_modules node --test tests/*.cjs"
