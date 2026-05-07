@@ -5,6 +5,7 @@ import bs58 from "bs58";
 import { toast } from "sonner";
 import { usePrivy } from "@privy-io/react-auth";
 import { useSignAndSendTransaction, useWallets } from "@privy-io/react-auth/solana";
+import { SOLANA_WALLET_CHAIN } from "@/lib/solana-config";
 
 type LaunchTokenButtonProps = {
   creatorUsername: string;
@@ -162,7 +163,7 @@ export function LaunchTokenButton({
           await signAndSendTransaction({
             transaction: bs58.decode(transaction),
             wallet,
-            chain: "solana:mainnet",
+            chain: SOLANA_WALLET_CHAIN,
           });
         }
 
@@ -175,7 +176,7 @@ export function LaunchTokenButton({
         await signAndSendTransaction({
           transaction: bs58.decode(data.launchTransaction),
           wallet,
-          chain: "solana:mainnet",
+          chain: SOLANA_WALLET_CHAIN,
         });
       }
 

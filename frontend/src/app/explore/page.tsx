@@ -217,11 +217,6 @@ export default function Explore() {
                     <h2 className="font-semibold text-white truncate">
                       @{creator.username}
                     </h2>
-                    {creator.launchedTokenMint && creator.launchedTokenUrl && (
-                      <p className="mt-1 text-xs font-medium text-[#ffd28e]">
-                        Live token {creator.launchedTokenSymbol ? `· $${creator.launchedTokenSymbol}` : ""}
-                      </p>
-                    )}
                     {creator.bio && (
                       <p className="text-sm text-white/70 line-clamp-2 mt-1">
                         {creator.bio}

@@ -2,23 +2,24 @@
 
 import { PrivyProvider } from "@privy-io/react-auth";
 import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
-import { createSolanaRpc } from "@solana/rpc";
-import { createSolanaRpcSubscriptions } from "@solana/rpc-subscriptions";
+import { createSolanaRpc, createSolanaRpcSubscriptions } from "@solana/kit";
 import { ReactNode } from "react";
 
 const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 const clientId = process.env.NEXT_PUBLIC_PRIVY_CLIENT_ID ?? undefined;
-
-const mainnetRpcUrl =
-  process.env.NEXT_PUBLIC_SOLANA_RPC ??
-  process.env.NEXT_PUBLIC_SOLANA_MAINNET_RPC ??
-  "";
-const mainnetWsUrl =
+const solanaRpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC ?? "https://api.devnet.solana.com";
+const solanaWsUrl =
   process.env.NEXT_PUBLIC_SOLANA_WS ??
-  (mainnetRpcUrl
-    ? mainnetRpcUrl.replace(/^https:/, "wss:").replace(/^http:/, "ws:")
-    : "");
+  solanaRpcUrl.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+
 const solanaConnectors = toSolanaWalletConnectors();
+const solanaRpcs = {
+  "solana:devnet": {
+    rpc: createSolanaRpc(solanaRpcUrl),
+    rpcSubscriptions: createSolanaRpcSubscriptions(solanaWsUrl),
+    blockExplorerUrl: "https://explorer.solana.com?cluster=devnet",
+  },
+} as const;
 
 export function PrivyProviders({ children }: { children: ReactNode }) {
   if (!appId) {
@@ -39,6 +40,9 @@ export function PrivyProviders({ children }: { children: ReactNode }) {
       appId={appId}
       clientId={clientId}
       config={{
+        solana: {
+          rpcs: solanaRpcs,
+        },
         embeddedWallets: {
           solana: {
             createOnLogin: "all-users",
@@ -49,18 +53,6 @@ export function PrivyProviders({ children }: { children: ReactNode }) {
             connectors: solanaConnectors,
           },
         },
-        ...(mainnetRpcUrl
-          ? {
-              solana: {
-                rpcs: {
-                  "solana:mainnet": {
-                    rpc: createSolanaRpc(mainnetRpcUrl as never),
-                    rpcSubscriptions: createSolanaRpcSubscriptions(mainnetWsUrl as never),
-                  },
-                },
-              },
-            }
-          : {}),
         appearance: {
           theme: "dark",
           walletChainType: "solana-only",

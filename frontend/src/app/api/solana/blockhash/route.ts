@@ -1,12 +1,10 @@
-import { Connection, clusterApiUrl } from "@solana/web3.js";
+import { Connection } from "@solana/web3.js";
 import { NextResponse } from "next/server";
-
-const network = process.env.SOLANA_NETWORK === "devnet" ? "devnet" : "mainnet-beta";
-const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl(network);
+import { SOLANA_RPC_URL } from "@/lib/solana-config";
 
 export async function GET() {
   try {
-    const connection = new Connection(rpcUrl);
+    const connection = new Connection(SOLANA_RPC_URL);
     const [latestBlockhash, slot, blockHeight] = await Promise.all([
       connection.getLatestBlockhash("confirmed"),
       connection.getSlot("confirmed"),

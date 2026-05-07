@@ -1,8 +1,7 @@
-import { Connection, clusterApiUrl } from "@solana/web3.js";
+import { Connection } from "@solana/web3.js";
 import { NextResponse } from "next/server";
-
-const network = process.env.SOLANA_NETWORK === "devnet" ? "devnet" : "mainnet-beta";
-const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl(network);
+import { confirmSignatureWithPolling } from "@/lib/solana-confirmation";
+import { SOLANA_RPC_URL } from "@/lib/solana-config";
 
 type ConfirmRequest = {
   signature?: string;
@@ -21,22 +20,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const connection = new Connection(rpcUrl, "confirmed");
-    const confirmation = await connection.confirmTransaction(
-      {
-        signature: body.signature,
-        blockhash: body.blockhash,
-        lastValidBlockHeight: body.lastValidBlockHeight,
-      },
-      "confirmed"
-    );
-
-    if (confirmation.value.err) {
-      return NextResponse.json(
-        { error: "Transaction failed to confirm", details: confirmation.value.err },
-        { status: 400 }
-      );
-    }
+    const connection = new Connection(SOLANA_RPC_URL, "confirmed");
+    await confirmSignatureWithPolling({
+      connection,
+      signature: body.signature,
+      lastValidBlockHeight: body.lastValidBlockHeight,
+      commitment: "confirmed",
+    });
 
     return NextResponse.json({ confirmed: true });
   } catch (err) {

@@ -4,12 +4,16 @@ import {
   TokenAccountNotFoundError,
   TokenInvalidAccountOwnerError,
 } from "@solana/spl-token";
-import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { NextResponse } from "next/server";
+import {
+  getPusdMintPublicKey,
+  PUSD_DECIMALS,
+  SOLANA_NETWORK,
+  SOLANA_RPC_URL,
+} from "@/lib/solana-config";
 
-const PUSD_MINT = new PublicKey("CzzgUBvxaMLwMhVSLgqJn3npmxoTo6nzMNQPAnwtHF3s");
-const network = process.env.SOLANA_NETWORK === "devnet" ? "devnet" : "mainnet-beta";
-const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl(network);
+const PUSD_MINT = getPusdMintPublicKey();
 
 function isTokenAccountMissing(err: unknown) {
   return (
@@ -30,31 +34,36 @@ export async function GET(req: Request) {
       );
     }
 
-    const connection = new Connection(rpcUrl, "confirmed");
+    const connection = new Connection(SOLANA_RPC_URL, "confirmed");
     const owner = new PublicKey(wallet);
-    const pusdAta = await getAssociatedTokenAddress(PUSD_MINT, owner);
 
     const lamports = await connection.getBalance(owner, "confirmed");
     let pusdBaseUnits = "0";
     let pusdTokenAccountExists = false;
+    let pusdAta = "";
 
-    try {
-      const pusdAccount = await getAccount(connection, pusdAta, "confirmed");
-      pusdBaseUnits = pusdAccount.amount.toString();
-      pusdTokenAccountExists = true;
-    } catch (err) {
-      if (!isTokenAccountMissing(err)) throw err;
+    if (PUSD_MINT) {
+      const pusdAtaAddress = await getAssociatedTokenAddress(PUSD_MINT, owner);
+      pusdAta = pusdAtaAddress.toBase58();
+
+      try {
+        const pusdAccount = await getAccount(connection, pusdAtaAddress, "confirmed");
+        pusdBaseUnits = pusdAccount.amount.toString();
+        pusdTokenAccountExists = true;
+      } catch (err) {
+        if (!isTokenAccountMissing(err)) throw err;
+      }
     }
 
     return NextResponse.json({
       wallet,
-      network,
+      network: SOLANA_NETWORK,
       sol: lamports / 1e9,
       lamports,
-      pusd: Number(pusdBaseUnits) / 1e6,
+      pusd: Number(pusdBaseUnits) / 10 ** PUSD_DECIMALS,
       pusdBaseUnits,
       pusdTokenAccountExists,
-      pusdAta: pusdAta.toBase58(),
+      pusdAta,
     });
   } catch (err) {
     console.error("User balances error:", err);

@@ -8,11 +8,9 @@ import {
 import {
   Connection,
   PublicKey,
-  SystemProgram,
   Transaction,
   TransactionInstruction,
   LAMPORTS_PER_SOL,
-  clusterApiUrl,
 } from "@solana/web3.js";
 import {
   createAssociatedTokenAccountInstruction,
@@ -24,14 +22,19 @@ import { MEMO_PROGRAM_ID } from "@solana/actions";
 import { prisma } from "@/lib/prisma";
 import { ACTION_ICON_FALLBACK } from "@/lib/constants";
 import { sendBookingConfirmationEmail } from "@/lib/email";
+import { buildBookSlotInstruction } from "@/lib/interval-program";
+import {
+  getPusdMintPublicKey,
+  PUSD_DECIMALS,
+  SOLANA_NETWORK,
+  SOLANA_RPC_URL,
+} from "@/lib/solana-config";
 
 export const dynamic = "force-dynamic";
 
-const network = process.env.SOLANA_NETWORK === "devnet" ? "devnet" : "mainnet-beta";
-const chainId = process.env.SOLANA_NETWORK ?? "mainnet-beta";
+const chainId = SOLANA_NETWORK;
 const actionVersion = "1";
-const PUSD_MINT = new PublicKey("CzzgUBvxaMLwMhVSLgqJn3npmxoTo6nzMNQPAnwtHF3s");
-const PUSD_DECIMALS = 6;
+const PUSD_MINT = getPusdMintPublicKey();
 
 const headers = createActionHeaders({
   chainId,
@@ -232,8 +235,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl(network);
-    const connection = new Connection(rpcUrl);
+    const connection = new Connection(SOLANA_RPC_URL);
     const creatorWallet = new PublicKey(slot.creator.wallet);
     const amountBaseUnits =
       slot.currency === "SOL"
@@ -255,14 +257,23 @@ export async function POST(req: Request) {
     const paymentIxs: TransactionInstruction[] = [];
 
     if (slot.currency === "SOL") {
-      paymentIxs.push(
-        SystemProgram.transfer({
-          fromPubkey: account,
-          toPubkey: creatorWallet,
-          lamports: Number(amountBaseUnits),
-        })
-      );
+      const { instruction } = await buildBookSlotInstruction({
+        slotId: slot.id,
+        payerWallet: account.toBase58(),
+        creatorWallet: creatorWallet.toBase58(),
+        amountLamports: amountBaseUnits,
+        scheduledEndTime: Math.floor(new Date(slot.endTime).getTime() / 1000),
+      });
+
+      paymentIxs.push(instruction);
     } else {
+      if (!PUSD_MINT) {
+        return Response.json(
+          { message: "PUSD is not configured for the current Solana network." } satisfies ActionError,
+          { status: 400, headers }
+        );
+      }
+
       const userAta = await getAssociatedTokenAddress(PUSD_MINT, account);
       const creatorAta = await getAssociatedTokenAddress(PUSD_MINT, creatorWallet);
       try {

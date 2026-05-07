@@ -3,11 +3,19 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import bs58 from "bs58";
 import { toast } from "sonner";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
 import { ProfilePhotoUpload } from "@/components/profile-photo-upload";
+import {
+  canInitializeIntervalPlatform,
+  getIntervalPlatformAdminWallet,
+  initializeIntervalPlatform,
+  IntervalTransactionError,
+} from "@/lib/interval-program";
 import { ensurePusdTokenAccount } from "@/lib/pusd";
+import { getExplorerTransactionUrl, SOLANA_WALLET_CHAIN } from "@/lib/solana-config";
 
 type Creator = {
   id: string;
@@ -17,6 +25,11 @@ type Creator = {
   bio: string | null;
   xAccount: string | null;
 };
+
+function signatureToString(signature: string | Uint8Array | undefined) {
+  if (!signature) return "";
+  return typeof signature === "string" ? signature : bs58.encode(signature);
+}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -30,9 +43,39 @@ export default function ProfilePage() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [creator, setCreator] = useState<Creator | null>(null);
+  const [initializingPlatform, setInitializingPlatform] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   const solanaWallet = wallets[0];
   const walletAddress = solanaWallet?.address ?? null;
+  const configuredAdminWallet = getIntervalPlatformAdminWallet();
+  const walletCanInitializePlatform = canInitializeIntervalPlatform(walletAddress);
+  const platformMissingError = setupError?.includes("Interval platform is not initialized on-chain.") ?? false;
+
+  function txDescription(signature: string) {
+    const url = getExplorerTransactionUrl(signature);
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline"
+      >
+        View transaction
+      </a>
+    );
+  }
+
+  function notifyTx(kind: "success" | "error", message: string, signature?: string | null) {
+    const options = signature
+      ? { description: txDescription(signature) }
+      : undefined;
+    if (kind === "success") {
+      toast.success(message, options);
+      return;
+    }
+    toast.error(message, options);
+  }
 
   const isFirstTime = creator === null && !loading;
 
@@ -72,9 +115,113 @@ export default function ProfilePage() {
     };
   }, [ready, authenticated, walletAddress]);
 
+  async function completeOnchainSetup() {
+    if (solanaWallet?.address !== walletAddress || !walletAddress) return;
+
+    const sponsoredRes = await fetch("/api/creator/onchain-onboard", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ wallet: walletAddress }),
+    });
+    const sponsoredData = await sponsoredRes.json().catch(() => ({}));
+
+    if (!sponsoredRes.ok) {
+      throw new Error(
+        sponsoredData?.error ?? "Failed to complete creator onboarding on-chain."
+      );
+    }
+
+    if (!sponsoredData?.transaction || typeof sponsoredData.transaction !== "string") {
+      throw new Error("Sponsored onboarding did not return a transaction to sign.");
+    }
+
+    const result = await signAndSendTransaction({
+      transaction: Uint8Array.from(Buffer.from(sponsoredData.transaction, "base64")),
+      wallet: solanaWallet,
+      chain: SOLANA_WALLET_CHAIN,
+    });
+    const signature = signatureToString(result.signature);
+    if (!signature) {
+      throw new Error("Sponsored onboarding was submitted, but no signature was returned.");
+    }
+
+    await fetch("/api/solana/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        signature,
+        blockhash: sponsoredData.blockhash,
+        lastValidBlockHeight: sponsoredData.lastValidBlockHeight,
+      }),
+    }).then(async (res) => {
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Sponsored onboarding transaction failed to confirm.");
+      }
+    });
+
+    const creatorProfileResult = {
+      created: true,
+      signature,
+    };
+
+    if (creatorProfileResult.created) {
+      notifyTx("success", "Creator profile registered on-chain.", creatorProfileResult.signature);
+    }
+
+    const pusdResult = await ensurePusdTokenAccount({
+      wallet: solanaWallet,
+      walletAddress,
+      signAndSendTransaction,
+    });
+    if (pusdResult.created) {
+      notifyTx("success", "PUSD token account created.", pusdResult.signature);
+    }
+  }
+
+  function getCreatorPayload() {
+    return {
+      wallet: walletAddress,
+      username: username.trim(),
+      profileImageUrl: profileImageUrl.trim() || undefined,
+      xAccount: xAccount.trim() || undefined,
+      bio: bio.trim() || undefined,
+    };
+  }
+
+  async function validateCreatorPayload() {
+    const res = await fetch("/api/creator", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...getCreatorPayload(),
+        validateOnly: true,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error ?? "Failed to validate creator profile");
+    }
+  }
+
+  async function saveCreatorProfile() {
+    const res = await fetch("/api/creator", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(getCreatorPayload()),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error ?? "Failed to create profile");
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!walletAddress) return;
+    setSetupError(null);
     setSubmitting(true);
     try {
       const payload = {
@@ -99,35 +246,62 @@ export default function ProfilePage() {
           toast.error(data?.error ?? "Failed to update profile");
         }
       } else {
-        const res = await fetch("/api/creator", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const data = await res.json();
-        if (res.ok) {
-          if (solanaWallet?.address === walletAddress) {
-            try {
-              await ensurePusdTokenAccount({
-                wallet: solanaWallet,
-                walletAddress,
-                signAndSendTransaction,
-              });
-            } catch (setupError) {
-              const message =
-                setupError instanceof Error
-                  ? setupError.message
-                  : "Profile saved, but PUSD account setup failed.";
-              toast.error(message);
-            }
+        await validateCreatorPayload();
+        if (solanaWallet?.address === walletAddress) {
+          try {
+            await completeOnchainSetup();
+          } catch (setupError) {
+            const message =
+              setupError instanceof Error
+                ? setupError.message
+                : "Failed to create your creator profile on-chain.";
+            setSetupError(message);
+            notifyTx(
+              "error",
+              message,
+              setupError instanceof IntervalTransactionError ? setupError.signature : undefined
+            );
+            return;
           }
-          router.replace("/dashboard");
-        } else {
-          toast.error(data?.error ?? "Failed to create profile");
         }
+        await saveCreatorProfile();
+        router.replace("/dashboard");
       }
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleInitializePlatform() {
+    if (!solanaWallet || solanaWallet.address !== walletAddress || !walletAddress) return;
+
+    setInitializingPlatform(true);
+    setSetupError(null);
+    try {
+      const result = await initializeIntervalPlatform({
+        wallet: solanaWallet,
+        walletAddress,
+        signAndSendTransaction,
+      });
+      if (result.created) {
+        notifyTx("success", "Interval platform initialized.", result.signature);
+      }
+      await completeOnchainSetup();
+      await saveCreatorProfile();
+      router.replace("/dashboard");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to initialize the Interval platform.";
+      setSetupError(message);
+      notifyTx(
+        "error",
+        message,
+        error instanceof IntervalTransactionError ? error.signature : undefined
+      );
+    } finally {
+      setInitializingPlatform(false);
     }
   }
 
@@ -178,6 +352,35 @@ export default function ProfilePage() {
           </div>
 
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            {setupError && (
+              <div className="space-y-3 rounded-lg bg-red-400/10 px-3 py-3 text-sm text-red-300">
+                <p>{setupError}</p>
+                {platformMissingError && (
+                  <div className="space-y-3">
+                    <p className="text-red-200/80">
+                      {walletCanInitializePlatform
+                        ? "This wallet can initialize the platform now and finish onboarding."
+                        : configuredAdminWallet
+                          ? `Ask the configured admin wallet ${configuredAdminWallet.slice(0, 6)}...${configuredAdminWallet.slice(-4)} to initialize the Interval platform first.`
+                          : "No admin wallet is configured for platform initialization."}
+                    </p>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      {walletCanInitializePlatform && (
+                        <button
+                          type="button"
+                          onClick={handleInitializePlatform}
+                          disabled={initializingPlatform}
+                          className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 font-medium text-black hover:opacity-90 disabled:pointer-events-none disabled:opacity-60"
+                          style={{ backgroundColor: "#ffd28e" }}
+                        >
+                          {initializingPlatform ? "Initializing..." : "Initialize platform and continue"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-white/80 mb-2">Profile photo</label>
               <ProfilePhotoUpload

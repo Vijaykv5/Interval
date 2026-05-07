@@ -1,15 +1,14 @@
-import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { SOLANA_NETWORK, SOLANA_RPC_URL } from "@/lib/solana-config";
 
-const network = process.env.SOLANA_NETWORK === "devnet" ? "devnet" : "mainnet-beta";
 const SOLANA_RPC_URLS: string[] = [
-  network === "devnet" ? "https://api.devnet.solana.com" : "https://api.mainnet-beta.solana.com",
-  clusterApiUrl(network),
-  ...(process.env.SOLANA_RPC
-    ? [process.env.SOLANA_RPC]
-    : []),
+  SOLANA_RPC_URL,
+  ...(SOLANA_NETWORK === "devnet"
+    ? ["https://api.devnet.solana.com"]
+    : ["https://api.mainnet-beta.solana.com"]),
 ];
 
 async function fetchWalletBalanceSol(walletAddress: string): Promise<number | null> {
@@ -35,7 +34,7 @@ async function fetchWalletBalanceSol(walletAddress: string): Promise<number | nu
             continue;
           }
           if (attempt === 1) {
-            console.warn(`Wallet balance RPC error (${network}):`, rpcUrl, commitment, err);
+            console.warn(`Wallet balance RPC error (${SOLANA_NETWORK}):`, rpcUrl, commitment, err);
           }
         }
       }

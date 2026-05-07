@@ -3,11 +3,18 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import bs58 from "bs58";
 import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
 import { toast } from "sonner";
-import { LaunchTokenButton } from "@/components/launch-token-button";
 import { TreasuryLpStudio } from "@/components/treasury-lp-studio";
 import { getDialBlinkUrl } from "@/lib/constants";
+import {
+  canInitializeIntervalPlatform,
+  getIntervalPlatformAdminWallet,
+  initializeIntervalPlatform,
+  isIntervalPlatformInitialized,
+} from "@/lib/interval-program";
+import { SOLANA_WALLET_CHAIN } from "@/lib/solana-config";
 import {
   PublicKey,
   SystemProgram,
@@ -78,6 +85,11 @@ type TreasuryBalances = {
 type LpPositionsSummary = {
   count: number;
 };
+
+function signatureToString(signature: string | Uint8Array | undefined) {
+  if (!signature) return "";
+  return typeof signature === "string" ? signature : bs58.encode(signature);
+}
 
 function formatMeetingDate(iso: string) {
   const d = new Date(iso);
@@ -156,9 +168,13 @@ export default function Dashboard() {
   const [treasuryBalances, setTreasuryBalances] = useState<TreasuryBalances | null>(null);
   const [treasuryLoading, setTreasuryLoading] = useState(false);
   const [lpPositionsSummary, setLpPositionsSummary] = useState<LpPositionsSummary>({ count: 0 });
+  const [platformInitialized, setPlatformInitialized] = useState<boolean | null>(null);
+  const [initializingPlatform, setInitializingPlatform] = useState(false);
 
   const solanaWallet = wallets[0];
   const walletAddress = solanaWallet?.address ?? null;
+  const configuredAdminWallet = getIntervalPlatformAdminWallet();
+  const walletCanInitializePlatform = canInitializeIntervalPlatform(walletAddress);
 
   const refreshTreasuryBalances = useCallback(async (wallet: string, showLoading = false) => {
     if (showLoading) setTreasuryLoading(true);
@@ -298,6 +314,23 @@ export default function Dashboard() {
     };
   }, [walletAddress, refreshTreasuryBalances, refreshLpPositionsSummary]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPlatformStatus() {
+      try {
+        const initialized = await isIntervalPlatformInitialized();
+        if (!cancelled) setPlatformInitialized(initialized);
+      } catch {
+        if (!cancelled) setPlatformInitialized(null);
+      }
+    }
+
+    loadPlatformStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Auto-refresh: poll every 5s + refetch when tab becomes visible
   useEffect(() => {
     if (!creator?.id || !walletAddress) return;
@@ -419,7 +452,6 @@ export default function Dashboard() {
   const searchParams = useSearchParams();
   const activeSection = (searchParams.get("section") as "overview" | "treasury" | "slots" | "bookings" | "create") || "overview";
 
-  const hasCreator = creator != null;
   const meetings = dashboard?.upcomingMeetings ?? [];
   const mySlots = dashboard?.mySlots ?? [];
   const bookings = dashboard?.bookings ?? [];
@@ -433,11 +465,6 @@ export default function Dashboard() {
   const fundedTreasuryAssets = [treasurySolBalance ?? 0, treasuryPusdBalance].filter((amount) => amount > 0).length;
   const hasTreasuryCapital = (treasurySolBalance ?? 0) > 0 || treasuryPusdBalance > 0;
   const hasLpPositions = lpPositionsSummary.count > 0;
-  const profileUrl =
-    typeof window !== "undefined" && creator
-      ? `${window.location.origin}/explore/${creator.username}`
-      : "";
-
   function slotBlinkUrl(slotId: string) {
     if (typeof window === "undefined") return "";
     return `${window.location.origin}/api/action/book?slotId=${slotId}`;
@@ -454,6 +481,86 @@ export default function Dashboard() {
       toast.success("Blink link copied to clipboard!");
     } catch {
       toast.success("Copy the link", { description: url });
+    }
+  }
+
+  async function handleInitializePlatform() {
+    if (!solanaWallet || !walletAddress) {
+      toast.error("Connect your wallet first.");
+      return;
+    }
+
+    setInitializingPlatform(true);
+    try {
+      const result = await initializeIntervalPlatform({
+        wallet: solanaWallet,
+        walletAddress,
+        signAndSendTransaction,
+      });
+
+      setPlatformInitialized(true);
+      toast.success(
+        result.created
+          ? "Interval platform initialized."
+          : "Interval platform is already initialized."
+      );
+
+      if (creator?.wallet === walletAddress) {
+        const sponsoredRes = await fetch("/api/creator/onchain-onboard", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ wallet: walletAddress }),
+        });
+        const sponsoredData = await sponsoredRes.json().catch(() => ({}));
+
+        if (!sponsoredRes.ok) {
+          throw new Error(
+            sponsoredData?.error ?? "Failed to complete creator onboarding on-chain."
+          );
+        }
+
+        if (!sponsoredData?.transaction || typeof sponsoredData.transaction !== "string") {
+          throw new Error("Sponsored onboarding did not return a transaction to sign.");
+        }
+
+        const signedResult = await signAndSendTransaction({
+          transaction: Uint8Array.from(Buffer.from(sponsoredData.transaction, "base64")),
+          wallet: solanaWallet,
+          chain: SOLANA_WALLET_CHAIN,
+        });
+        const signature = signatureToString(signedResult.signature);
+        if (!signature) {
+          throw new Error("Sponsored onboarding was submitted, but no signature was returned.");
+        }
+
+        const confirmRes = await fetch("/api/solana/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            signature,
+            blockhash: sponsoredData.blockhash,
+            lastValidBlockHeight: sponsoredData.lastValidBlockHeight,
+          }),
+        });
+        if (!confirmRes.ok) {
+          const confirmData = await confirmRes.json().catch(() => ({}));
+          throw new Error(
+            confirmData?.error ?? "Sponsored onboarding transaction failed to confirm."
+          );
+        }
+
+        toast.success("Creator profile registered on-chain.");
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to initialize the Interval platform.";
+      toast.error(message);
+    } finally {
+      setInitializingPlatform(false);
     }
   }
 
@@ -507,7 +614,7 @@ export default function Dashboard() {
       await signAndSendTransaction({
         transaction: new Uint8Array(txBytes),
         wallet: solanaWallet,
-        chain: "solana:mainnet",
+        chain: SOLANA_WALLET_CHAIN,
       });
 
       toast.success("Withdrawal successful!");
@@ -546,61 +653,39 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
+            {platformInitialized === false && (
+              <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-500/10 p-4 text-red-100">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold">Interval platform is not initialized</p>
+                    <p className="mt-1 text-sm text-red-100/80">
+                      {walletCanInitializePlatform
+                        ? "Initialize the platform once, then creator registration and SOL escrow bookings can start working."
+                        : configuredAdminWallet
+                          ? `Ask the configured admin wallet ${configuredAdminWallet.slice(0, 6)}...${configuredAdminWallet.slice(-4)} to initialize the Interval platform first.`
+                          : "No admin wallet is configured for platform initialization."}
+                    </p>
+                  </div>
+                  {walletCanInitializePlatform && (
+                    <button
+                      type="button"
+                      onClick={handleInitializePlatform}
+                      disabled={initializingPlatform}
+                      className="inline-flex min-h-10 items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-black hover:opacity-90 disabled:pointer-events-none disabled:opacity-60"
+                      style={{ backgroundColor: "#ffd28e" }}
+                    >
+                      {initializingPlatform ? "Initializing..." : "Initialize platform"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             {activeSection === "overview" && (
               <div className="space-y-8">
                 <div>
                   <h2 className="text-2xl font-bold text-white tracking-tight">Overview</h2>
                   <p className="text-sm text-white/50 mt-1">Your stats at a glance</p>
                 </div>
-                {creator && (
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-white">
-                        Creator token
-                      </p>
-                      <p className="text-sm text-white/55 mt-1">
-                        Launch your creator token on Bags from the dashboard only.
-                      </p>
-                      {creator.launchedTokenMint && creator.launchedTokenUrl && (
-                        <a
-                          href={creator.launchedTokenUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-block mt-3 text-sm font-medium"
-                          style={{ color: "#ffd28e" }}
-                        >
-                          View {creator.launchedTokenSymbol ? `$${creator.launchedTokenSymbol}` : creator.launchedTokenName ?? "token"} →
-                        </a>
-                      )}
-                    </div>
-                    <LaunchTokenButton
-                      creatorUsername={creator.username}
-                      creatorWallet={creator.wallet}
-                      creatorBio={creator.bio}
-                      creatorImageUrl={creator.profileImageUrl}
-                      creatorXAccount={creator.xAccount}
-                      profileUrl={profileUrl}
-                      existingTokenMint={creator.launchedTokenMint}
-                      existingTokenName={creator.launchedTokenName}
-                      existingTokenSymbol={creator.launchedTokenSymbol}
-                      existingTokenUrl={creator.launchedTokenUrl}
-                      onLaunchSuccess={async (token) => {
-                        setCreator((current) =>
-                          current
-                            ? {
-                                ...current,
-                                launchedTokenMint: token.mint,
-                                launchedTokenName: token.name,
-                                launchedTokenSymbol: token.symbol,
-                                launchedTokenUrl: token.url,
-                                launchedTokenAt: token.launchedAt,
-                              }
-                            : current
-                        );
-                      }}
-                    />
-                  </div>
-                )}
                 <div className="grid gap-5 sm:grid-cols-3">
                   <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-6 overflow-hidden relative group hover:border-white/15 transition-colors">
                     <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />

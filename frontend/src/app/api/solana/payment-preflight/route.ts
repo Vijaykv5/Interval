@@ -4,12 +4,11 @@ import {
   TokenAccountNotFoundError,
   TokenInvalidAccountOwnerError,
 } from "@solana/spl-token";
-import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { NextResponse } from "next/server";
+import { getPusdMintPublicKey, SOLANA_RPC_URL } from "@/lib/solana-config";
 
-const PUSD_MINT = new PublicKey("CzzgUBvxaMLwMhVSLgqJn3npmxoTo6nzMNQPAnwtHF3s");
-const network = process.env.SOLANA_NETWORK === "devnet" ? "devnet" : "mainnet-beta";
-const rpcUrl = process.env.SOLANA_RPC ?? clusterApiUrl(network);
+const PUSD_MINT = getPusdMintPublicKey();
 
 type PreflightRequest = {
   payerWallet?: string;
@@ -35,13 +34,20 @@ export async function POST(req: Request) {
       );
     }
 
-    const connection = new Connection(rpcUrl, "confirmed");
+    const connection = new Connection(SOLANA_RPC_URL, "confirmed");
     const payer = new PublicKey(body.payerWallet);
     const creator = new PublicKey(body.creatorWallet);
 
     if (body.currency === "SOL") {
       const lamports = await connection.getBalance(payer, "confirmed");
       return NextResponse.json({ lamports });
+    }
+
+    if (!PUSD_MINT) {
+      return NextResponse.json(
+        { error: "PUSD is not configured for the current Solana network" },
+        { status: 400 }
+      );
     }
 
     const userAta = await getAssociatedTokenAddress(PUSD_MINT, payer);

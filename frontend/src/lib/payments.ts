@@ -3,23 +3,27 @@
 import {
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
-  getAssociatedTokenAddress,
 } from "@solana/spl-token";
 import {
-  LAMPORTS_PER_SOL,
   PublicKey,
-  SystemProgram,
   Transaction,
 } from "@solana/web3.js";
 import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
 import bs58 from "bs58";
+import { payForSlotWithIntervalEscrow } from "@/lib/interval-program";
+import {
+  getPusdMintPublicKey,
+  PUSD_DECIMALS,
+  SOLANA_WALLET_CHAIN,
+  type SolanaWalletChain,
+} from "@/lib/solana-config";
 
 export type Currency = "SOL" | "PUSD";
 
 type SignAndSendTransaction = (args: {
   transaction: Uint8Array;
   wallet: ConnectedStandardSolanaWallet;
-  chain: "solana:mainnet";
+  chain: SolanaWalletChain;
 }) => Promise<{ signature: Uint8Array }>;
 
 type PayForSlotParams = {
@@ -27,12 +31,13 @@ type PayForSlotParams = {
   signAndSendTransaction: SignAndSendTransaction;
   payerWallet: string;
   creatorWallet: string;
+  slotId?: string;
+  scheduledEndTime?: string;
   price: number;
   currency: Currency;
 };
 
-const PUSD_MINT = new PublicKey("CzzgUBvxaMLwMhVSLgqJn3npmxoTo6nzMNQPAnwtHF3s");
-const PUSD_DECIMALS = 6;
+const PUSD_MINT = getPusdMintPublicKey();
 
 type PaymentPreflight =
   | { lamports: number }
@@ -77,6 +82,8 @@ export async function payForSlot({
   signAndSendTransaction,
   payerWallet,
   creatorWallet,
+  slotId,
+  scheduledEndTime,
   price,
   currency,
 }: PayForSlotParams): Promise<string> {
@@ -89,7 +96,6 @@ export async function payForSlot({
 
   const payer = new PublicKey(payerWallet);
   const creator = new PublicKey(creatorWallet);
-  const transaction = new Transaction();
   const preflight = await fetchJson<PaymentPreflight>("/api/solana/payment-preflight", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -101,23 +107,36 @@ export async function payForSlot({
   });
 
   if (currency === "SOL") {
-    const lamports = Number(toBaseUnits(price, 9));
+    if (!slotId || !scheduledEndTime) {
+      throw new Error("Missing slot metadata for on-chain SOL escrow booking.");
+    }
+
+    const lamports = toBaseUnits(price, 9);
     const balance = "lamports" in preflight ? preflight.lamports : 0;
 
-    if (balance < lamports) {
+    if (BigInt(balance) < lamports) {
       throw new Error(
         `Insufficient SOL. You need ${formatPaymentAmount(price, "SOL")} plus network fees.`
       );
     }
 
-    transaction.add(
-      SystemProgram.transfer({
-        fromPubkey: payer,
-        toPubkey: creator,
-        lamports,
-      })
-    );
+    const result = await payForSlotWithIntervalEscrow({
+      wallet,
+      signAndSendTransaction,
+      payerWallet,
+      creatorWallet,
+      slotId,
+      price,
+      scheduledEndTime,
+    });
+
+    return result.signature;
   } else {
+    if (!PUSD_MINT) {
+      throw new Error("PUSD is not configured for the current Solana network.");
+    }
+
+    const transaction = new Transaction();
     const amount = toBaseUnits(price, PUSD_DECIMALS);
     if ("lamports" in preflight) {
       throw new Error("Could not load PUSD account info. Please try again.");
@@ -148,40 +167,40 @@ export async function payForSlot({
     transaction.add(
       createTransferInstruction(userAta, creatorAta, payer, amount)
     );
+
+    const latestBlockhash = await fetchJson<{
+      blockhash: string;
+      lastValidBlockHeight: number;
+    }>("/api/solana/blockhash");
+    transaction.feePayer = payer;
+    transaction.recentBlockhash = latestBlockhash.blockhash;
+
+    const serialized = transaction.serialize({
+      requireAllSignatures: false,
+      verifySignatures: false,
+    });
+
+    const result = await signAndSendTransaction({
+      transaction: new Uint8Array(serialized),
+      wallet,
+      chain: SOLANA_WALLET_CHAIN,
+    });
+    const signature = signatureToString(result.signature);
+
+    if (!signature) {
+      throw new Error("Transaction submitted, but no signature was returned.");
+    }
+
+    await fetchJson<{ confirmed: boolean }>("/api/solana/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        signature,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+      }),
+    });
+
+    return signature;
   }
-
-  const latestBlockhash = await fetchJson<{
-    blockhash: string;
-    lastValidBlockHeight: number;
-  }>("/api/solana/blockhash");
-  transaction.feePayer = payer;
-  transaction.recentBlockhash = latestBlockhash.blockhash;
-
-  const serialized = transaction.serialize({
-    requireAllSignatures: false,
-    verifySignatures: false,
-  });
-
-  const result = await signAndSendTransaction({
-    transaction: new Uint8Array(serialized),
-    wallet,
-    chain: "solana:mainnet",
-  });
-  const signature = signatureToString(result.signature);
-
-  if (!signature) {
-    throw new Error("Transaction submitted, but no signature was returned.");
-  }
-
-  await fetchJson<{ confirmed: boolean }>("/api/solana/confirm", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      signature,
-      blockhash: latestBlockhash.blockhash,
-      lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-    }),
-  });
-
-  return signature;
 }

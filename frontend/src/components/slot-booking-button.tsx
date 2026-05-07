@@ -12,6 +12,7 @@ type SlotBookingButtonProps = {
   creatorWallet: string;
   price: number;
   currency: Currency;
+  scheduledEndTime: string;
 };
 
 export function SlotBookingButton({
@@ -20,6 +21,7 @@ export function SlotBookingButton({
   creatorWallet,
   price,
   currency,
+  scheduledEndTime,
 }: SlotBookingButtonProps) {
   const { ready, authenticated, login, connectWallet } = usePrivy();
   const { wallets } = useWallets();
@@ -60,6 +62,8 @@ export function SlotBookingButton({
         signAndSendTransaction,
         payerWallet: walletAddress,
         creatorWallet,
+        slotId,
+        scheduledEndTime,
         price,
         currency,
       });

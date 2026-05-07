@@ -24,6 +24,9 @@ Open [http://localhost:3000](http://localhost:3000).
 | `NEXT_PUBLIC_APP_URL` | Public app URL (e.g. http://localhost:3000) |
 | `SOLANA_NETWORK` | `mainnet-beta` or `devnet` |
 | `SOLANA_RPC` | Solana RPC URL |
+| `NEXT_PUBLIC_INTERVAL_PLATFORM_ADMIN_WALLET` | Optional wallet allowed to initialize the Interval platform from the UI |
+| `INTERVAL_PLATFORM_ADMIN_SECRET_KEY` | Server-side admin signer used to initialize/top up the on-chain treasury and sponsor creator onboarding |
+| `INTERVAL_CREATOR_ONBOARDING_LAMPORTS` | Optional lamports to fund each newly onboarded creator wallet (default `50000000`) |
 | `NEXT_PUBLIC_PRIVY_APP_ID` | Privy app ID |
 | `PRIVY_APP_SECRET` | Privy app secret |
 | `RESEND_FROM` | Sender email for Resend |

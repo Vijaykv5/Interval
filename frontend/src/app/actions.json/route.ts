@@ -1,6 +1,7 @@
 import { createActionHeaders } from "@solana/actions";
+import { SOLANA_NETWORK } from "@/lib/solana-config";
 
-const chainId = process.env.SOLANA_NETWORK ?? "mainnet-beta";
+const chainId = SOLANA_NETWORK;
 const headers = createActionHeaders({ chainId, actionVersion: "1" });
 
 export async function GET() {

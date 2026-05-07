@@ -55,6 +55,7 @@ export async function POST(req: Request) {
       launchedTokenSymbol,
       launchedTokenUrl,
       launchedTokenAt,
+      validateOnly,
     } = body;
 
     if (!wallet || typeof wallet !== "string" || wallet.length === 0) {
@@ -90,6 +91,10 @@ export async function POST(req: Request) {
         { error: "Username is already taken" },
         { status: 400 }
       );
+    }
+
+    if (validateOnly) {
+      return NextResponse.json({ ok: true });
     }
 
     const creator = await prisma.creator.create({

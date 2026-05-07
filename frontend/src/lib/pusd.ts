@@ -7,13 +7,18 @@ import {
 import { PublicKey, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
+import {
+  getPusdMintPublicKey,
+  SOLANA_WALLET_CHAIN,
+  type SolanaWalletChain,
+} from "@/lib/solana-config";
 
-export const PUSD_MINT = new PublicKey("CzzgUBvxaMLwMhVSLgqJn3npmxoTo6nzMNQPAnwtHF3s");
+export const PUSD_MINT = getPusdMintPublicKey();
 
 type SignAndSendTransaction = (args: {
   transaction: Uint8Array;
   wallet: ConnectedStandardSolanaWallet;
-  chain: "solana:mainnet";
+  chain: SolanaWalletChain;
 }) => Promise<{ signature: Uint8Array }>;
 
 type WalletBalances = {
@@ -47,6 +52,10 @@ export async function ensurePusdTokenAccount({
   walletAddress: string;
   signAndSendTransaction: SignAndSendTransaction;
 }) {
+  if (!PUSD_MINT) {
+    return { created: false, signature: null as string | null, skipped: true };
+  }
+
   const balanceData = await fetchJson<WalletBalances>(
     `/api/user/balances?wallet=${encodeURIComponent(walletAddress)}`
   );
@@ -77,7 +86,7 @@ export async function ensurePusdTokenAccount({
   const result = await signAndSendTransaction({
     transaction: new Uint8Array(serialized),
     wallet,
-    chain: "solana:mainnet",
+    chain: SOLANA_WALLET_CHAIN,
   });
   const signature = signatureToString(result.signature);
 
