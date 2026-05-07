@@ -8,7 +8,7 @@ pub mod state;
 #[allow(ambiguous_glob_reexports)]
 pub use instructions::*;
 
-declare_id!("6GfKzK6QZ3xMaRgmvriLwqtSAeMKn9vPvwUwx1z971TY");
+declare_id!("4ATtXLmT25nh447GjP9BtdWJudN8uuqcNNmawRWexfx6");
 
 #[program]
 pub mod interval {
@@ -18,8 +18,19 @@ pub mod interval {
         instructions::initialize_platform(ctx)
     }
 
+    pub fn initialize_treasury(ctx: Context<InitializeTreasury>) -> Result<()> {
+        instructions::initialize_treasury(ctx)
+    }
+
     pub fn register_creator(ctx: Context<RegisterCreator>) -> Result<()> {
         instructions::register_creator(ctx)
+    }
+
+    pub fn onboard_creator(
+        ctx: Context<OnboardCreator>,
+        onboarding_amount: u64,
+    ) -> Result<()> {
+        instructions::onboard_creator(ctx, onboarding_amount)
     }
 
     pub fn book_slot(

@@ -4,9 +4,9 @@ use anchor_lang::{
 };
 
 use crate::{
-    constants::{BOOKING_SEED, CREATOR_SEED, PLATFORM_SEED},
+    constants::{BOOKING_SEED, CREATOR_SEED, PLATFORM_SEED, TREASURY_SEED},
     errors::IntervalError,
-    state::{BookingEscrow, BookingStatus, CreatorProfile, Platform},
+    state::{BookingEscrow, BookingStatus, CreatorProfile, Platform, Treasury},
 };
 
 pub fn initialize_platform(ctx: Context<InitializePlatform>) -> Result<()> {
@@ -18,11 +18,40 @@ pub fn initialize_platform(ctx: Context<InitializePlatform>) -> Result<()> {
     Ok(())
 }
 
+pub fn initialize_treasury(ctx: Context<InitializeTreasury>) -> Result<()> {
+    let treasury = &mut ctx.accounts.treasury;
+    treasury.bump = ctx.bumps.treasury;
+
+    Ok(())
+}
+
 pub fn register_creator(ctx: Context<RegisterCreator>) -> Result<()> {
     let creator_profile = &mut ctx.accounts.creator_profile;
     creator_profile.authority = ctx.accounts.authority.key();
     creator_profile.is_active = true;
     creator_profile.bump = ctx.bumps.creator_profile;
+
+    Ok(())
+}
+
+pub fn onboard_creator(ctx: Context<OnboardCreator>, onboarding_amount: u64) -> Result<()> {
+    require!(onboarding_amount > 0, IntervalError::InvalidOnboardingAmount);
+
+    let rent_minimum = Rent::get()?.minimum_balance(Treasury::SPACE);
+    let treasury_lamports = **ctx.accounts.treasury.to_account_info().lamports.borrow();
+    let available_lamports = treasury_lamports.saturating_sub(rent_minimum);
+    require!(
+        available_lamports >= onboarding_amount,
+        IntervalError::InsufficientTreasuryBalance
+    );
+
+    let creator_profile = &mut ctx.accounts.creator_profile;
+    creator_profile.authority = ctx.accounts.authority.key();
+    creator_profile.is_active = true;
+    creator_profile.bump = ctx.bumps.creator_profile;
+
+    ctx.accounts.treasury.sub_lamports(onboarding_amount)?;
+    ctx.accounts.authority.add_lamports(onboarding_amount)?;
 
     Ok(())
 }
@@ -142,6 +171,57 @@ pub struct RegisterCreator<'info> {
         bump
     )]
     pub creator_profile: Account<'info, CreatorProfile>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeTreasury<'info> {
+    #[account(
+        seeds = [PLATFORM_SEED],
+        bump = platform.bump,
+        has_one = admin @ IntervalError::Unauthorized
+    )]
+    pub platform: Account<'info, Platform>,
+    #[account(
+        init,
+        payer = admin,
+        space = Treasury::SPACE,
+        seeds = [TREASURY_SEED],
+        bump
+    )]
+    pub treasury: Account<'info, Treasury>,
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct OnboardCreator<'info> {
+    #[account(
+        seeds = [PLATFORM_SEED],
+        bump = platform.bump,
+        has_one = admin @ IntervalError::Unauthorized,
+        constraint = !platform.is_paused @ IntervalError::PlatformPaused
+    )]
+    pub platform: Account<'info, Platform>,
+    #[account(
+        mut,
+        seeds = [TREASURY_SEED],
+        bump = treasury.bump
+    )]
+    pub treasury: Account<'info, Treasury>,
+    #[account(
+        init,
+        payer = admin,
+        space = CreatorProfile::SPACE,
+        seeds = [CREATOR_SEED, authority.key().as_ref()],
+        bump
+    )]
+    pub creator_profile: Account<'info, CreatorProfile>,
+    #[account(mut)]
+    pub admin: Signer<'info>,
     #[account(mut)]
     pub authority: Signer<'info>,
     pub system_program: Program<'info, System>,

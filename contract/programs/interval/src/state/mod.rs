@@ -12,6 +12,15 @@ impl Platform {
 }
 
 #[account]
+pub struct Treasury {
+    pub bump: u8,
+}
+
+impl Treasury {
+    pub const SPACE: usize = 8 + 1;
+}
+
+#[account]
 pub struct CreatorProfile {
     pub authority: Pubkey,
     pub is_active: bool,

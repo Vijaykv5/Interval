@@ -4,6 +4,7 @@ const anchor = require("@coral-xyz/anchor");
 const { Keypair, PublicKey, SystemProgram } = require("@solana/web3.js");
 
 const PLATFORM_SEED = "platform";
+const TREASURY_SEED = "treasury";
 const CREATOR_SEED = "creator";
 const BOOKING_SEED = "booking";
 const LAMPORTS_PER_SOL = anchor.web3.LAMPORTS_PER_SOL;
@@ -54,6 +55,7 @@ describe("interval", () => {
 
   const program = anchor.workspace.Interval;
   const creator = Keypair.generate();
+  const sponsoredCreator = Keypair.generate();
   const buyer = Keypair.generate();
   const refundBuyer = Keypair.generate();
 
@@ -64,6 +66,16 @@ describe("interval", () => {
 
   const [creatorProfilePda] = PublicKey.findProgramAddressSync(
     [Buffer.from(CREATOR_SEED), creator.publicKey.toBuffer()],
+    program.programId
+  );
+
+  const [sponsoredCreatorProfilePda] = PublicKey.findProgramAddressSync(
+    [Buffer.from(CREATOR_SEED), sponsoredCreator.publicKey.toBuffer()],
+    program.programId
+  );
+
+  const [treasuryPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from(TREASURY_SEED)],
     program.programId
   );
 
@@ -117,6 +129,63 @@ describe("interval", () => {
 
     assert.equal(creatorProfile.authority.toBase58(), creator.publicKey.toBase58());
     assert.equal(creatorProfile.isActive, true);
+  });
+
+  it("initializes the treasury and sponsors creator onboarding", async () => {
+    const existingTreasury = await program.account.treasury.fetchNullable(treasuryPda);
+
+    if (!existingTreasury) {
+      await program.methods
+        .initializeTreasury()
+        .accounts({
+          platform: platformPda,
+          treasury: treasuryPda,
+          admin: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+    }
+
+    const treasuryFunding = 0.2 * LAMPORTS_PER_SOL;
+    const sponsoredCreatorBalanceBefore = await provider.connection.getBalance(
+      sponsoredCreator.publicKey
+    );
+
+    const treasuryTopUpTx = new anchor.web3.Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: provider.wallet.publicKey,
+        toPubkey: treasuryPda,
+        lamports: treasuryFunding,
+      })
+    );
+    await provider.sendAndConfirm(treasuryTopUpTx, []);
+
+    await program.methods
+      .onboardCreator(new anchor.BN(0.05 * LAMPORTS_PER_SOL))
+      .accounts({
+        platform: platformPda,
+        treasury: treasuryPda,
+        creatorProfile: sponsoredCreatorProfilePda,
+        admin: provider.wallet.publicKey,
+        authority: sponsoredCreator.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([sponsoredCreator])
+      .rpc();
+
+    const sponsoredCreatorProfile = await program.account.creatorProfile.fetch(
+      sponsoredCreatorProfilePda
+    );
+    const sponsoredCreatorBalanceAfter = await provider.connection.getBalance(
+      sponsoredCreator.publicKey
+    );
+
+    assert.equal(
+      sponsoredCreatorProfile.authority.toBase58(),
+      sponsoredCreator.publicKey.toBase58()
+    );
+    assert.equal(sponsoredCreatorProfile.isActive, true);
+    assert.equal(sponsoredCreatorBalanceAfter > sponsoredCreatorBalanceBefore, true);
   });
 
   it("books a slot into escrow", async () => {

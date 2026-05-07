@@ -16,4 +16,8 @@ pub enum IntervalError {
     BookingNotEnded,
     #[msg("The signer is not authorized to perform this action.")]
     Unauthorized,
+    #[msg("The onboarding amount must be greater than zero.")]
+    InvalidOnboardingAmount,
+    #[msg("The treasury does not have enough SOL for onboarding.")]
+    InsufficientTreasuryBalance,
 }

@@ -7,7 +7,7 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-interval = "6GfKzK6QZ3xMaRgmvriLwqtSAeMKn9vPvwUwx1z971TY"
+interval = "4ATtXLmT25nh447GjP9BtdWJudN8uuqcNNmawRWexfx6"
 
 [provider]
 cluster = "localnet"
