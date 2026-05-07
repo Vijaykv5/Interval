@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { usePrivy } from "@privy-io/react-auth";
-import { useWallets } from "@privy-io/react-auth/solana";
+import { useSignAndSendTransaction, useWallets } from "@privy-io/react-auth/solana";
 import { SiteNav } from "@/components/site-nav";
+import { ensurePusdTokenAccount } from "@/lib/pusd";
 
 type BalanceData = {
   wallet: string;
@@ -30,10 +32,12 @@ function formatTokenAmount(amount: number, decimals: number) {
 export default function ProfilePage() {
   const { ready, authenticated, login, connectWallet, user } = usePrivy();
   const { wallets } = useWallets();
+  const { signAndSendTransaction } = useSignAndSendTransaction();
   const [balances, setBalances] = useState<BalanceData | null>(null);
   const [loadingBalances, setLoadingBalances] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [creatingPusdAccount, setCreatingPusdAccount] = useState(false);
 
   const wallet = wallets[0];
   const walletAddress = wallet?.address ?? null;
@@ -67,6 +71,37 @@ export default function ProfilePage() {
     await navigator.clipboard.writeText(walletAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 1600);
+  }
+
+  async function handleCreatePusdAccount() {
+    if (!wallet || !walletAddress) return;
+    setCreatingPusdAccount(true);
+    setBalanceError(null);
+
+    try {
+      const result = await ensurePusdTokenAccount({
+        wallet,
+        walletAddress,
+        signAndSendTransaction,
+      });
+
+      if (result.created) {
+        toast.success("PUSD token account created.");
+      } else {
+        toast.success("PUSD token account already exists.");
+      }
+
+      await loadBalances();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to create your PUSD token account.";
+      setBalanceError(message);
+      toast.error(message);
+    } finally {
+      setCreatingPusdAccount(false);
+    }
   }
 
   return (
@@ -174,7 +209,20 @@ export default function ProfilePage() {
                   {loadingBalances && !balances ? "..." : formatTokenAmount(balances?.pusd ?? 0, 2)} PUSD
                 </p>
                 {balances && !balances.pusdTokenAccountExists && (
-                  <p className="mt-2 text-xs text-white/40">No PUSD token account yet.</p>
+                  <div className="mt-3 space-y-3">
+                    <p className="text-xs text-white/40">
+                      No PUSD token account yet. Create it once with a small SOL network rent payment.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleCreatePusdAccount}
+                      disabled={creatingPusdAccount}
+                      className="inline-flex min-h-10 items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-black hover:opacity-90 disabled:opacity-60 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305]"
+                      style={{ backgroundColor: "#ffd28e" }}
+                    >
+                      {creatingPusdAccount ? "Creating..." : "Create PUSD account"}
+                    </button>
+                  </div>
                 )}
               </div>
             </section>

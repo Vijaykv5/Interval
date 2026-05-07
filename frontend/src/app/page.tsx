@@ -274,6 +274,14 @@ export default function Home() {
             <Link className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white" href="/profile">
               Profile
             </Link>
+            <a
+              className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white"
+              href="https://x.com/intervaldotwtf"
+              target="_blank"
+              rel="noreferrer"
+            >
+              X
+            </a>
           </nav>
         </div>
       </footer>

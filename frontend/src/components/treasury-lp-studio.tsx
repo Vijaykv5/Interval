@@ -28,6 +28,8 @@ type PoolRecommendation = {
   mcap?: number | null;
 };
 
+type PoolFilter = "all" | "dlmm" | "damm";
+
 type Position = {
   id: string;
   pairName?: string | null;
@@ -99,6 +101,23 @@ function formatPercent(value: number | null | undefined) {
   return `${value.toFixed(2)}%`;
 }
 
+function formatYieldSummary(pool: PoolRecommendation) {
+  const apr = formatPercent(pool.apr);
+  const apy = formatPercent(pool.apy);
+
+  if (apr !== "—" && apy !== "—") return `${apr} / ${apy}`;
+  if (apr !== "—") return `${apr} APR`;
+  if (apy !== "—") return `${apy} APY`;
+  return "No APR data";
+}
+
+function formatDlmmDescriptor(pool: PoolRecommendation) {
+  const tvl = pool.tvl ?? 0;
+  if (tvl >= 1_000_000) return "Deep liquidity";
+  if (tvl >= 250_000) return "Healthy liquidity";
+  return "Active bins";
+}
+
 function formatTokenAmount(value: number | null | undefined) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("en-US", {
@@ -130,6 +149,29 @@ function RefreshIcon({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
+function ChevronIcon({
+  open,
+  className = "h-4 w-4",
+}: {
+  open: boolean;
+  className?: string;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`${className} transition-transform ${open ? "rotate-180" : ""}`}
+      aria-hidden="true"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 function isPreferredDlmmPool(pool: PoolRecommendation) {
   if (pool.protocol !== "meteora") return false;
   const tvl = pool.tvl ?? 0;
@@ -151,6 +193,49 @@ function isZapReadyPool(pool: PoolRecommendation) {
   return pool.protocol === "meteora" || pool.protocol === "meteora_damm_v2";
 }
 
+function getPoolType(pool: PoolRecommendation): Exclude<PoolFilter, "all"> | "other" {
+  if (pool.protocol === "meteora") return "dlmm";
+  if (pool.protocol === "meteora_damm_v2") return "damm";
+  return "other";
+}
+
+function sortPools(pools: PoolRecommendation[]) {
+  return [...pools].sort((a, b) => {
+    const preferredDelta = Number(isPreferredDlmmPool(b)) - Number(isPreferredDlmmPool(a));
+    if (preferredDelta !== 0) return preferredDelta;
+
+    const aprA = a.apr ?? a.apy ?? -1;
+    const aprB = b.apr ?? b.apy ?? -1;
+    if (aprB !== aprA) return aprB - aprA;
+
+    return (b.tvl ?? 0) - (a.tvl ?? 0);
+  });
+}
+
+function FilterButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex min-h-10 items-center justify-center rounded-xl border px-4 text-sm font-semibold uppercase tracking-[0.14em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305] ${
+        active
+          ? "border-[#ffd28e]/35 bg-[#ffd28e]/15 text-[#ffd28e]"
+          : "border-white/15 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function TreasuryLpStudio({
   walletAddress,
   earningsByCurrency: _earningsByCurrency,
@@ -162,6 +247,7 @@ export function TreasuryLpStudio({
   const [recommendations, setRecommendations] = useState<PoolRecommendation[]>([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
+  const [poolFilter, setPoolFilter] = useState<PoolFilter>("all");
   const [positions, setPositions] = useState<Position[]>([]);
   const [positionsLoading, setPositionsLoading] = useState(false);
   const [positionsError, setPositionsError] = useState<string | null>(null);
@@ -173,6 +259,7 @@ export function TreasuryLpStudio({
   const [quotes, setQuotes] = useState<Record<string, QuoteResponse>>({});
   const [lastZapSignature, setLastZapSignature] = useState<string | null>(null);
   const [positionSyncMessage, setPositionSyncMessage] = useState<string | null>(null);
+  const [positionsOpen, setPositionsOpen] = useState(true);
   const solanaWallet = wallets[0];
 
   function bytesToBase64(bytes: Uint8Array) {
@@ -292,9 +379,7 @@ export function TreasuryLpStudio({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Failed to load recommendations");
       const pools = Array.isArray(data?.data) ? (data.data as PoolRecommendation[]) : [];
-      const preferred = pools.filter(isPreferredDlmmPool);
-      const fallback = pools.filter((pool) => !isPreferredDlmmPool(pool));
-      setRecommendations([...preferred, ...fallback].slice(0, 4));
+      setRecommendations(sortPools(pools));
     } catch (error) {
       setRecommendationsError(error instanceof Error ? error.message : "Failed to load recommendations");
     } finally {
@@ -365,6 +450,18 @@ export function TreasuryLpStudio({
   useEffect(() => {
     fetchPositions();
   }, [walletAddress]);
+
+  useEffect(() => {
+    function syncOpenStateFromHash() {
+      if (window.location.hash === "#open-lp-positions") {
+        setPositionsOpen(true);
+      }
+    }
+
+    syncOpenStateFromHash();
+    window.addEventListener("hashchange", syncOpenStateFromHash);
+    return () => window.removeEventListener("hashchange", syncOpenStateFromHash);
+  }, []);
 
   async function handleZapIn(pool: PoolRecommendation) {
     if (!walletAddress || !solanaWallet) {
@@ -485,6 +582,294 @@ export function TreasuryLpStudio({
     }
   }
 
+  const dlmmPools = recommendations.filter((pool) => getPoolType(pool) === "dlmm");
+  const dammPools = recommendations.filter((pool) => getPoolType(pool) === "damm");
+  const otherPools = recommendations.filter((pool) => getPoolType(pool) === "other");
+
+  function renderPoolCard(pool: PoolRecommendation) {
+    const poolType = getPoolType(pool);
+    const showYield = poolType !== "dlmm";
+
+    return (
+      <article
+        key={pool.pool}
+        className="rounded-2xl border border-white/10 bg-black/20 p-5 transition-colors hover:border-white/15"
+      >
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="text-lg font-semibold text-white">{poolPairLabel(pool)}</h4>
+            <span className="rounded-full border border-[#ffd28e]/25 bg-[#ffd28e]/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#ffd28e]">
+              {(pool.protocol ?? "Meteora").replaceAll("_", " ")}
+            </span>
+            <span className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-200">
+              {poolType === "dlmm" ? "DLMM" : poolType === "damm" ? "DAMM" : "Other"}
+            </span>
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
+                isZapReadyPool(pool)
+                  ? "border border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
+                  : "border border-white/15 bg-white/5 text-white/65"
+              }`}
+            >
+              {isZapReadyPool(pool) ? "Zap ready" : "View only"}
+            </span>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-3 text-sm text-white/60">
+            <div>
+              <p className="text-white/40">24h volume</p>
+              <p className="mt-1 font-medium text-white">{formatUsd(pool.vol_24h)}</p>
+            </div>
+            <div>
+              <p className="text-white/40">TVL</p>
+              <p className="mt-1 font-medium text-white">{formatUsd(pool.tvl)}</p>
+            </div>
+            <div>
+              <p className="text-white/40">{showYield ? "APR / APY" : "DLMM profile"}</p>
+              <p className="mt-1 font-medium text-white">
+                {showYield ? formatYieldSummary(pool) : formatDlmmDescriptor(pool)}
+              </p>
+            </div>
+          </div>
+          {!showYield && (
+            <p className="mt-2 text-xs text-white/35">
+              Concentrated-liquidity pool with active-bin execution. Focus on depth and routing instead of headline yield.
+            </p>
+          )}
+          {showYield && pool.apr == null && pool.apy == null ? (
+            <p className="mt-2 text-xs text-white/35">
+              APR data is missing from discovery for this pool, so the app is trying LP Agent pool info as a fallback.
+            </p>
+          ) : null}
+          <p className="mt-4 font-mono text-xs text-white/35 break-all">{pool.pool}</p>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <label
+            htmlFor={`zap-amount-${pool.pool}`}
+            className="block text-sm font-medium text-white/85"
+          >
+            {isZapReadyPool(pool) ? "Zap in with SOL" : "Pool status"}
+          </label>
+          {isZapReadyPool(pool) ? (
+            <div className="mt-2 flex gap-2">
+              <input
+                id={`zap-amount-${pool.pool}`}
+                type="number"
+                min="0"
+                step="0.01"
+                value={zapAmounts[pool.pool] ?? ""}
+                onChange={(event) =>
+                  setZapAmounts((current) => ({
+                    ...current,
+                    [pool.pool]: event.target.value,
+                  }))
+                }
+                placeholder="0.10"
+                className="min-h-10 flex-1 rounded-xl border border-white/20 bg-black/40 px-3.5 text-white placeholder:text-white/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/40"
+              />
+              <button
+                type="button"
+                onClick={() => handleZapIn(pool)}
+                disabled={!authenticated || zapInBusyPool === pool.pool}
+                className="min-h-10 rounded-xl px-4 text-sm font-semibold text-black transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305]"
+                style={{ backgroundColor: "#ffd28e" }}
+              >
+                {zapInBusyPool === pool.pool ? "Working…" : "Zap in"}
+              </button>
+            </div>
+          ) : (
+            <div className="mt-2 rounded-xl border border-white/10 bg-black/30 px-3.5 py-3 text-sm text-white/60">
+              This pool can be explored here, but zap-in is not enabled for it in this UI yet.
+            </div>
+          )}
+          <p className="mt-2 text-xs leading-5 text-white/45">
+            {isZapReadyPool(pool)
+              ? "LP Agent will prepare the add transactions, you will sign locally, and the app will land them through Jito."
+              : "Use this as a discovery card for now while zap support stays focused on supported Meteora pools."}
+          </p>
+          {zapInBusyPool === pool.pool && zapInStage && (
+            <p className="mt-2 text-xs font-medium text-[#ffd28e]">
+              {zapInStage}
+            </p>
+          )}
+        </div>
+      </article>
+    );
+  }
+
+  function renderPoolSection(title: string, pools: PoolRecommendation[], description: string) {
+    if (pools.length === 0) return null;
+
+    return (
+      <section className="space-y-3">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-white/75">{title}</h4>
+            <p className="mt-1 text-sm text-white/45">{description}</p>
+          </div>
+          <p className="text-xs uppercase tracking-[0.16em] text-white/35">
+            {pools.length} pool{pools.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {pools.map((pool) => renderPoolCard(pool))}
+        </div>
+      </section>
+    );
+  }
+
+  function renderPositionsContent() {
+    if (positionsLoading) {
+      return (
+        <div className="space-y-3">
+          {[1, 2].map((item) => (
+            <div key={item} className="h-36 rounded-2xl bg-white/5 animate-pulse" />
+          ))}
+        </div>
+      );
+    }
+
+    if (positionsError) {
+      return (
+        <div className="rounded-2xl border border-red-400/25 bg-red-500/10 p-4 text-sm text-red-200">
+          <p>{positionsError}</p>
+          <button
+            type="button"
+            onClick={() => {
+              void fetchPositions();
+            }}
+            className="mt-3 min-h-10 rounded-lg border border-red-300/25 px-3 text-sm font-medium text-red-100 hover:bg-red-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40"
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+
+    if (positions.length === 0) {
+      return (
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-8 text-center">
+          <p className="text-white/75">No open LP positions yet.</p>
+          <p className="mt-2 text-sm text-white/50">
+            Use the recommendations below to deploy part of your treasury into a Meteora pool.
+          </p>
+          {positionSyncMessage ? (
+            <p className="mt-3 text-sm text-[#ffd28e]">{positionSyncMessage}</p>
+          ) : null}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {positions.map((position) => {
+          const quote = quotes[position.id];
+
+          return (
+            <article
+              key={position.id}
+              className="rounded-2xl border border-white/10 bg-black/20 p-4 transition-colors hover:border-white/15"
+            >
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-lg font-semibold text-white">
+                      {position.pairName?.trim() || "LP position"}
+                    </h4>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
+                        position.inRange
+                          ? "border border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
+                          : "border border-amber-400/25 bg-amber-500/10 text-amber-200"
+                      }`}
+                    >
+                      {position.inRange ? "In range" : "Out of range"}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 text-sm text-white/60 sm:grid-cols-3">
+                    <div>
+                      <p className="text-white/40">Current value</p>
+                      <p className="mt-1 font-medium text-white">{formatUsd(position.currentValue)}</p>
+                    </div>
+                    <div>
+                      <p className="text-white/40">PnL</p>
+                      <p className="mt-1 font-medium text-white">{formatPercent(position.pnl?.percent)}</p>
+                    </div>
+                    <div>
+                      <p className="text-white/40">Fees earned</p>
+                      <p className="mt-1 font-medium text-white">{formatUsd(position.fees?.total)}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 text-sm text-white/60 sm:grid-cols-3">
+                    <div>
+                      <p className="text-white/40">Current token prices</p>
+                      <p className="mt-1 font-medium text-white">
+                        {formatUsd(position.prices?.token0)} / {formatUsd(position.prices?.token1)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-white/40">Current token amounts</p>
+                      <p className="mt-1 font-medium text-white">
+                        {formatTokenAmount(position.currentAmounts?.token0)} / {formatTokenAmount(position.currentAmounts?.token1)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-white/40">APR</p>
+                      <p className="mt-1 font-medium text-white">{formatPercent(position.apr)}</p>
+                    </div>
+                  </div>
+
+                  {(typeof position.fees?.collected === "number" || typeof position.fees?.uncollected === "number") && (
+                    <p className="mt-3 text-xs text-white/45">
+                      Collected: {formatUsd(position.fees?.collected)}. Uncollected: {formatUsd(position.fees?.uncollected)}.
+                    </p>
+                  )}
+
+                  {quote && (
+                    <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm text-white/60">
+                      <p className="font-medium text-white">Zap-out quote</p>
+                      {quote.hasQuote ? (
+                        <p className="mt-2">
+                          Token prices: {formatUsd(quote.price?.token0)} / {formatUsd(quote.price?.token1)}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-white/45">
+                          No zap-out quote is available for this position right now.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex w-full max-w-sm flex-col gap-2 xl:items-end">
+                  <button
+                    type="button"
+                    onClick={() => handleQuote(position.id)}
+                    disabled={quoteBusyPosition === position.id}
+                    className="min-h-10 w-full rounded-xl border border-white/15 bg-white/5 px-4 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305]"
+                  >
+                    {quoteBusyPosition === position.id ? "Loading quote…" : "Preview zap-out"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleZapOut(position.id)}
+                    disabled={!authenticated || zapOutBusyPosition === position.id}
+                    className="min-h-10 w-full rounded-xl px-4 text-sm font-semibold text-black transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305]"
+                    style={{ backgroundColor: "#ffd28e" }}
+                  >
+                    {zapOutBusyPosition === position.id ? "Zapping out…" : "Zap out to SOL"}
+                  </button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    );
+  }
+
   async function handleQuote(positionId: string) {
     setQuoteBusyPosition(positionId);
     try {
@@ -601,6 +986,46 @@ export function TreasuryLpStudio({
 
   return (
     <div className="space-y-8">
+      <section
+        id="open-lp-positions"
+        className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm overflow-hidden scroll-mt-24"
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-white/10 p-5">
+          <div>
+            <h3 className="text-base font-semibold text-white">Open LP positions</h3>
+            <p className="mt-1 text-sm text-white/50">
+              Track portfolio state, preview exit quotes, and zap out when you want to rotate capital.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-white/65">
+              {positions.length} open
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                void fetchPositions();
+              }}
+              aria-label="Refresh LP positions"
+              title="Refresh LP positions"
+              className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-white/15 bg-white/5 px-3 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305]"
+            >
+              <RefreshIcon />
+            </button>
+            <button
+              type="button"
+              onClick={() => setPositionsOpen((current) => !current)}
+              className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305]"
+            >
+              <span>{positionsOpen ? "Hide" : "Show"}</span>
+              <ChevronIcon open={positionsOpen} />
+            </button>
+          </div>
+        </div>
+
+        {positionsOpen ? <div className="p-5">{renderPositionsContent()}</div> : null}
+      </section>
+
       <section className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm overflow-hidden">
         <div className="flex items-center justify-between gap-4 border-b border-white/10 p-5">
           <div>
@@ -621,6 +1046,12 @@ export function TreasuryLpStudio({
         </div>
 
         <div className="p-5">
+          <div className="mb-5 flex flex-wrap items-center gap-3">
+            <FilterButton active={poolFilter === "all"} label="All" onClick={() => setPoolFilter("all")} />
+            <FilterButton active={poolFilter === "dlmm"} label="DLMM" onClick={() => setPoolFilter("dlmm")} />
+            <FilterButton active={poolFilter === "damm"} label="DAMM" onClick={() => setPoolFilter("damm")} />
+          </div>
+
           {positionSyncMessage || lastZapSignature ? (
             <div className="mb-4 rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-4 text-sm text-emerald-200">
               {positionSyncMessage ? (
@@ -643,7 +1074,7 @@ export function TreasuryLpStudio({
 
           {recommendationsLoading ? (
             <div className="grid gap-4 md:grid-cols-2">
-              {[1, 2, 3, 4].map((item) => (
+              {[1, 2, 3, 4, 5, 6].map((item) => (
                 <div key={item} className="h-72 rounded-2xl bg-white/5 animate-pulse" />
               ))}
             </div>
@@ -662,266 +1093,40 @@ export function TreasuryLpStudio({
             <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-white/55">
               No pool recommendations are available right now. Refresh to try again.
             </div>
+          ) : poolFilter === "dlmm" ? (
+            renderPoolSection(
+              "DLMM Pools",
+              dlmmPools,
+              "Concentrated-liquidity Meteora pools with active-bin routing and the strongest default fit for the current zap flow."
+            )
+          ) : poolFilter === "damm" ? (
+            renderPoolSection(
+              "DAMM Pools",
+              dammPools,
+              "Dynamic AMM Meteora pools surfaced separately so you can compare them directly against DLMM options."
+            )
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {recommendations.slice(0, 4).map((pool) => (
-                <article
-                  key={pool.pool}
-                  className="rounded-2xl border border-white/10 bg-black/20 p-5 transition-colors hover:border-white/15"
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="text-lg font-semibold text-white">{poolPairLabel(pool)}</h4>
-                      <span className="rounded-full border border-[#ffd28e]/25 bg-[#ffd28e]/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#ffd28e]">
-                        {(pool.protocol ?? "Meteora").replaceAll("_", " ")}
-                      </span>
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
-                          isZapReadyPool(pool)
-                            ? "border border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
-                            : "border border-white/15 bg-white/5 text-white/65"
-                        }`}
-                      >
-                        {isZapReadyPool(pool) ? "Zap ready" : "View only"}
-                      </span>
-                    </div>
-                    <div className="mt-4 grid grid-cols-3 gap-3 text-sm text-white/60">
-                      <div>
-                        <p className="text-white/40">24h volume</p>
-                        <p className="mt-1 font-medium text-white">{formatUsd(pool.vol_24h)}</p>
-                      </div>
-                      <div>
-                        <p className="text-white/40">TVL</p>
-                        <p className="mt-1 font-medium text-white">{formatUsd(pool.tvl)}</p>
-                      </div>
-                      <div>
-                        <p className="text-white/40">APR / APY</p>
-                        <p className="mt-1 font-medium text-white">
-                          {formatPercent(pool.apr)} / {formatPercent(pool.apy)}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="mt-4 font-mono text-xs text-white/35 break-all">{pool.pool}</p>
-                  </div>
-
-                  <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                    <label
-                      htmlFor={`zap-amount-${pool.pool}`}
-                      className="block text-sm font-medium text-white/85"
-                    >
-                      {isZapReadyPool(pool) ? "Zap in with SOL" : "Pool status"}
-                    </label>
-                    {isZapReadyPool(pool) ? (
-                      <div className="mt-2 flex gap-2">
-                        <input
-                          id={`zap-amount-${pool.pool}`}
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={zapAmounts[pool.pool] ?? ""}
-                          onChange={(event) =>
-                            setZapAmounts((current) => ({
-                              ...current,
-                              [pool.pool]: event.target.value,
-                            }))
-                          }
-                          placeholder="0.10"
-                          className="min-h-10 flex-1 rounded-xl border border-white/20 bg-black/40 px-3.5 text-white placeholder:text-white/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/40"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleZapIn(pool)}
-                          disabled={!authenticated || zapInBusyPool === pool.pool}
-                          className="min-h-10 rounded-xl px-4 text-sm font-semibold text-black transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305]"
-                          style={{ backgroundColor: "#ffd28e" }}
-                        >
-                          {zapInBusyPool === pool.pool ? "Working…" : "Zap in"}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="mt-2 rounded-xl border border-white/10 bg-black/30 px-3.5 py-3 text-sm text-white/60">
-                        This pool can be explored here, but zap-in is not enabled for it in this UI yet.
-                      </div>
-                    )}
-                    <p className="mt-2 text-xs leading-5 text-white/45">
-                      {isZapReadyPool(pool)
-                        ? "LP Agent will prepare the add transactions, you will sign locally, and the app will land them through Jito."
-                        : "Use this as a discovery card for now while zap support stays focused on supported Meteora pools."}
-                    </p>
-                    {zapInBusyPool === pool.pool && zapInStage && (
-                      <p className="mt-2 text-xs font-medium text-[#ffd28e]">
-                        {zapInStage}
-                      </p>
-                    )}
-                  </div>
-                </article>
-              ))}
+            <div className="space-y-8">
+              {renderPoolSection(
+                "DLMM Pools",
+                dlmmPools,
+                "Concentrated-liquidity Meteora pools prioritized for active-bin routing and stronger treasury deployment defaults."
+              )}
+              {renderPoolSection(
+                "DAMM Pools",
+                dammPools,
+                "Dynamic AMM Meteora pools, separated so you can compare their volume, TVL, and yield profile directly."
+              )}
+              {renderPoolSection(
+                "Other Discoveries",
+                otherPools,
+                "Additional pools returned by LP Agent that are visible for research but not first-class in the current zap flow."
+              )}
             </div>
           )}
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm overflow-hidden">
-        <div className="flex items-center justify-between gap-4 border-b border-white/10 p-5">
-          <div>
-            <h3 className="text-base font-semibold text-white">Open LP positions</h3>
-            <p className="mt-1 text-sm text-white/50">
-              Track portfolio state, preview exit quotes, and zap out when you want to rotate capital.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              void fetchPositions();
-            }}
-            aria-label="Refresh LP positions"
-            title="Refresh LP positions"
-            className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-white/15 bg-white/5 px-3 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305]"
-          >
-            <RefreshIcon />
-          </button>
-        </div>
-
-        <div className="p-5">
-          {positionsLoading ? (
-            <div className="space-y-3">
-              {[1, 2].map((item) => (
-                <div key={item} className="h-36 rounded-2xl bg-white/5 animate-pulse" />
-              ))}
-            </div>
-          ) : positionsError ? (
-            <div className="rounded-2xl border border-red-400/25 bg-red-500/10 p-4 text-sm text-red-200">
-              <p>{positionsError}</p>
-              <button
-                type="button"
-                onClick={() => {
-                  void fetchPositions();
-                }}
-                className="mt-3 min-h-10 rounded-lg border border-red-300/25 px-3 text-sm font-medium text-red-100 hover:bg-red-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40"
-              >
-                Try again
-              </button>
-            </div>
-          ) : positions.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-8 text-center">
-              <p className="text-white/75">No open LP positions yet.</p>
-              <p className="mt-2 text-sm text-white/50">
-                Use the recommendations above to deploy part of your treasury into a Meteora pool.
-              </p>
-              {positionSyncMessage ? (
-                <p className="mt-3 text-sm text-[#ffd28e]">{positionSyncMessage}</p>
-              ) : null}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {positions.map((position) => {
-                const quote = quotes[position.id];
-
-                return (
-                  <article
-                    key={position.id}
-                    className="rounded-2xl border border-white/10 bg-black/20 p-4 transition-colors hover:border-white/15"
-                  >
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="text-lg font-semibold text-white">
-                            {position.pairName?.trim() || "LP position"}
-                          </h4>
-                          <span
-                            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
-                              position.inRange
-                                ? "border border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
-                                : "border border-amber-400/25 bg-amber-500/10 text-amber-200"
-                            }`}
-                          >
-                            {position.inRange ? "In range" : "Out of range"}
-                          </span>
-                        </div>
-
-                        <div className="mt-3 grid gap-3 text-sm text-white/60 sm:grid-cols-3">
-                          <div>
-                            <p className="text-white/40">Current value</p>
-                            <p className="mt-1 font-medium text-white">{formatUsd(position.currentValue)}</p>
-                          </div>
-                          <div>
-                            <p className="text-white/40">PnL</p>
-                            <p className="mt-1 font-medium text-white">{formatPercent(position.pnl?.percent)}</p>
-                          </div>
-                          <div>
-                            <p className="text-white/40">Fees earned</p>
-                            <p className="mt-1 font-medium text-white">{formatUsd(position.fees?.total)}</p>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 grid gap-3 text-sm text-white/60 sm:grid-cols-3">
-                          <div>
-                            <p className="text-white/40">Current token prices</p>
-                            <p className="mt-1 font-medium text-white">
-                              {formatUsd(position.prices?.token0)} / {formatUsd(position.prices?.token1)}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-white/40">Current token amounts</p>
-                            <p className="mt-1 font-medium text-white">
-                              {formatTokenAmount(position.currentAmounts?.token0)} / {formatTokenAmount(position.currentAmounts?.token1)}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-white/40">APR</p>
-                            <p className="mt-1 font-medium text-white">{formatPercent(position.apr)}</p>
-                          </div>
-                        </div>
-
-                        {(typeof position.fees?.collected === "number" || typeof position.fees?.uncollected === "number") && (
-                          <p className="mt-3 text-xs text-white/45">
-                            Collected: {formatUsd(position.fees?.collected)}. Uncollected: {formatUsd(position.fees?.uncollected)}.
-                          </p>
-                        )}
-
-                        {quote && (
-                          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm text-white/60">
-                            <p className="font-medium text-white">Zap-out quote</p>
-                            {quote.hasQuote ? (
-                              <p className="mt-2">
-                                Token prices: {formatUsd(quote.price?.token0)} / {formatUsd(quote.price?.token1)}
-                              </p>
-                            ) : (
-                              <p className="mt-2 text-white/45">
-                                No zap-out quote is available for this position right now.
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex w-full max-w-sm flex-col gap-2 xl:items-end">
-                        <button
-                          type="button"
-                          onClick={() => handleQuote(position.id)}
-                          disabled={quoteBusyPosition === position.id}
-                          className="min-h-10 w-full rounded-xl border border-white/15 bg-white/5 px-4 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305]"
-                        >
-                          {quoteBusyPosition === position.id ? "Loading quote…" : "Preview zap-out"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleZapOut(position.id)}
-                          disabled={!authenticated || zapOutBusyPosition === position.id}
-                          className="min-h-10 w-full rounded-xl px-4 text-sm font-semibold text-black transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305]"
-                          style={{ backgroundColor: "#ffd28e" }}
-                        >
-                          {zapOutBusyPosition === position.id ? "Zapping out…" : "Zap out to SOL"}
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
     </div>
   );
 }

@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { usePrivy } from "@privy-io/react-auth";
-import { useWallets } from "@privy-io/react-auth/solana";
+import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
 import { ProfilePhotoUpload } from "@/components/profile-photo-upload";
+import { ensurePusdTokenAccount } from "@/lib/pusd";
 
 type Creator = {
   id: string;
@@ -21,6 +22,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
+  const { signAndSendTransaction } = useSignAndSendTransaction();
   const [username, setUsername] = useState("");
   const [profileImageUrl, setProfileImageUrl] = useState("");
   const [xAccount, setXAccount] = useState("");
@@ -104,6 +106,21 @@ export default function ProfilePage() {
         });
         const data = await res.json();
         if (res.ok) {
+          if (solanaWallet?.address === walletAddress) {
+            try {
+              await ensurePusdTokenAccount({
+                wallet: solanaWallet,
+                walletAddress,
+                signAndSendTransaction,
+              });
+            } catch (setupError) {
+              const message =
+                setupError instanceof Error
+                  ? setupError.message
+                  : "Profile saved, but PUSD account setup failed.";
+              toast.error(message);
+            }
+          }
           router.replace("/dashboard");
         } else {
           toast.error(data?.error ?? "Failed to create profile");

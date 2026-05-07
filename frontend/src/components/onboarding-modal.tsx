@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
+import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
 import { ProfilePhotoUpload } from "@/components/profile-photo-upload";
+import { ensurePusdTokenAccount } from "@/lib/pusd";
 
 type OnboardingModalProps = {
   open: boolean;
@@ -13,12 +16,15 @@ type OnboardingModalProps = {
 };
 
 export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closable = true }: OnboardingModalProps) {
+  const { wallets } = useWallets();
+  const { signAndSendTransaction } = useSignAndSendTransaction();
   const [username, setUsername] = useState("");
   const [profileImageUrl, setProfileImageUrl] = useState("");
   const [xAccount, setXAccount] = useState("");
   const [bio, setBio] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const solanaWallet = wallets[0];
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -38,6 +44,21 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
       });
       const data = await res.json();
       if (res.ok) {
+        if (solanaWallet?.address === walletAddress) {
+          try {
+            await ensurePusdTokenAccount({
+              wallet: solanaWallet,
+              walletAddress,
+              signAndSendTransaction,
+            });
+          } catch (setupError) {
+            const message =
+              setupError instanceof Error
+                ? setupError.message
+                : "Profile saved, but PUSD account setup failed.";
+            toast.error(message);
+          }
+        }
         onSuccess();
       } else {
         setError(data?.error ?? "Failed to create profile");

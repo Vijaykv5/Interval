@@ -75,6 +75,10 @@ type TreasuryBalances = {
   pusdAta: string;
 };
 
+type LpPositionsSummary = {
+  count: number;
+};
+
 function formatMeetingDate(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString("en-US", {
@@ -151,6 +155,7 @@ export default function Dashboard() {
   const [withdrawing, setWithdrawing] = useState(false);
   const [treasuryBalances, setTreasuryBalances] = useState<TreasuryBalances | null>(null);
   const [treasuryLoading, setTreasuryLoading] = useState(false);
+  const [lpPositionsSummary, setLpPositionsSummary] = useState<LpPositionsSummary>({ count: 0 });
 
   const solanaWallet = wallets[0];
   const walletAddress = solanaWallet?.address ?? null;
@@ -166,6 +171,18 @@ export default function Dashboard() {
       setTreasuryBalances(null);
     } finally {
       if (showLoading) setTreasuryLoading(false);
+    }
+  }, []);
+
+  const refreshLpPositionsSummary = useCallback(async (wallet: string) => {
+    try {
+      const res = await fetch(`/api/lp-agent/positions?owner=${encodeURIComponent(wallet)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error("Failed to load LP positions");
+      const positions = Array.isArray(data?.data) ? data.data : [];
+      setLpPositionsSummary({ count: positions.length });
+    } catch {
+      setLpPositionsSummary({ count: 0 });
     }
   }, []);
 
@@ -195,6 +212,7 @@ export default function Dashboard() {
     if (!walletAddress) {
       setLoading(false);
       setTreasuryBalances(null);
+      setLpPositionsSummary({ count: 0 });
       setDashboard({
         upcomingMeetings: [],
         earnings: 0,
@@ -232,6 +250,7 @@ export default function Dashboard() {
         setCreator(creatorData);
 
         await refreshTreasuryBalances(walletAddress, true);
+        await refreshLpPositionsSummary(walletAddress);
         if (cancelled) return;
 
         const dashRes = await fetch(
@@ -277,7 +296,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [walletAddress, refreshTreasuryBalances]);
+  }, [walletAddress, refreshTreasuryBalances, refreshLpPositionsSummary]);
 
   // Auto-refresh: poll every 5s + refetch when tab becomes visible
   useEffect(() => {
@@ -286,11 +305,13 @@ export default function Dashboard() {
     const interval = setInterval(() => {
       refreshDashboard(creator.id);
       refreshTreasuryBalances(walletAddress);
+      refreshLpPositionsSummary(walletAddress);
     }, 5000);
 
     const onFocus = () => {
       refreshDashboard(creator.id);
       refreshTreasuryBalances(walletAddress);
+      refreshLpPositionsSummary(walletAddress);
     };
 
     window.addEventListener("focus", onFocus);
@@ -304,7 +325,7 @@ export default function Dashboard() {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [creator?.id, walletAddress, refreshDashboard, refreshTreasuryBalances]);
+  }, [creator?.id, walletAddress, refreshDashboard, refreshTreasuryBalances, refreshLpPositionsSummary]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -410,6 +431,8 @@ export default function Dashboard() {
   const treasuryPusdBalance = treasuryBalances?.pusd ?? 0;
   const totalEarningsDisplay = earningsByCurrency.SOL + earningsByCurrency.PUSD;
   const fundedTreasuryAssets = [treasurySolBalance ?? 0, treasuryPusdBalance].filter((amount) => amount > 0).length;
+  const hasTreasuryCapital = (treasurySolBalance ?? 0) > 0 || treasuryPusdBalance > 0;
+  const hasLpPositions = lpPositionsSummary.count > 0;
   const profileUrl =
     typeof window !== "undefined" && creator
       ? `${window.location.origin}/explore/${creator.username}`
@@ -711,13 +734,28 @@ export default function Dashboard() {
 
                   <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-6 overflow-hidden relative hover:border-white/15 transition-colors">
                     <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
-                    <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest">LP-ready assets</p>
-                    <p className="mt-3 text-2xl font-bold text-white tabular-nums">
-                      {fundedTreasuryAssets}
+                    <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest">Treasury status</p>
+                    <p className="mt-3 text-2xl font-bold text-white">
+                      {hasLpPositions
+                        ? `${lpPositionsSummary.count} open LP position${lpPositionsSummary.count !== 1 ? "s" : ""}`
+                        : hasTreasuryCapital
+                          ? `${fundedTreasuryAssets} funded asset${fundedTreasuryAssets !== 1 ? "s" : ""}`
+                          : "No treasury activity"}
                     </p>
                     <p className="mt-2 text-xs text-white/45">
-                      Wallet assets with capital available for future LP recommendations and zap actions.
+                      {hasLpPositions
+                        ? "Your treasury already has live LP exposure. Jump straight into positions and exits."
+                        : hasTreasuryCapital
+                          ? "Capital is available in treasury. Review recommendations and deploy when you're ready."
+                          : "No idle treasury capital or LP positions yet. Start in Treasury when you want to deploy."}
                     </p>
+                    <Link
+                      href="/dashboard?section=treasury#open-lp-positions"
+                      className="mt-4 inline-flex items-center gap-2 text-sm font-semibold underline underline-offset-4 hover:opacity-90"
+                      style={{ color: "#ffd28e" }}
+                    >
+                      See here <span aria-hidden>→</span>
+                    </Link>
                   </div>
                 </div>
 
