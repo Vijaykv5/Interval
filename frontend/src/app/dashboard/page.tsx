@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
 import { toast } from "sonner";
 import { LaunchTokenButton } from "@/components/launch-token-button";
+import { TreasuryLpStudio } from "@/components/treasury-lp-studio";
 import { getDialBlinkUrl } from "@/lib/constants";
 import {
   PublicKey,
@@ -61,6 +62,17 @@ type DashboardData = {
   mySlots: Slot[];
   bookings: Booking[];
   walletBalance: number | null;
+};
+
+type TreasuryBalances = {
+  wallet: string;
+  network: string;
+  sol: number;
+  lamports: number;
+  pusd: number;
+  pusdBaseUnits: string;
+  pusdTokenAccountExists: boolean;
+  pusdAta: string;
 };
 
 function formatMeetingDate(iso: string) {
@@ -137,9 +149,25 @@ export default function Dashboard() {
   const [withdrawRecipient, setWithdrawRecipient] = useState("");
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [treasuryBalances, setTreasuryBalances] = useState<TreasuryBalances | null>(null);
+  const [treasuryLoading, setTreasuryLoading] = useState(false);
 
   const solanaWallet = wallets[0];
   const walletAddress = solanaWallet?.address ?? null;
+
+  const refreshTreasuryBalances = useCallback(async (wallet: string, showLoading = false) => {
+    if (showLoading) setTreasuryLoading(true);
+    try {
+      const res = await fetch(`/api/user/balances?wallet=${encodeURIComponent(wallet)}`);
+      if (!res.ok) throw new Error("Failed to load treasury balances");
+      const data = (await res.json()) as TreasuryBalances;
+      setTreasuryBalances(data);
+    } catch {
+      setTreasuryBalances(null);
+    } finally {
+      if (showLoading) setTreasuryLoading(false);
+    }
+  }, []);
 
   const refreshDashboard = useCallback(async (creatorId: string, showLoading = false) => {
     if (showLoading) setLoading(true);
@@ -166,6 +194,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!walletAddress) {
       setLoading(false);
+      setTreasuryBalances(null);
       setDashboard({
         upcomingMeetings: [],
         earnings: 0,
@@ -201,6 +230,9 @@ export default function Dashboard() {
         const creatorData = await creatorRes.json();
         if (cancelled) return;
         setCreator(creatorData);
+
+        await refreshTreasuryBalances(walletAddress, true);
+        if (cancelled) return;
 
         const dashRes = await fetch(
           `/api/dashboard?creatorId=${encodeURIComponent(creatorData.id)}${walletAddress ? `&wallet=${encodeURIComponent(walletAddress)}` : ""}`
@@ -245,17 +277,21 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [walletAddress]);
+  }, [walletAddress, refreshTreasuryBalances]);
 
   // Auto-refresh: poll every 5s + refetch when tab becomes visible
   useEffect(() => {
-    if (!creator?.id) return;
+    if (!creator?.id || !walletAddress) return;
 
     const interval = setInterval(() => {
       refreshDashboard(creator.id);
+      refreshTreasuryBalances(walletAddress);
     }, 5000);
 
-    const onFocus = () => refreshDashboard(creator.id);
+    const onFocus = () => {
+      refreshDashboard(creator.id);
+      refreshTreasuryBalances(walletAddress);
+    };
 
     window.addEventListener("focus", onFocus);
     const onVisibilityChange = () => {
@@ -268,7 +304,7 @@ export default function Dashboard() {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [creator?.id, refreshDashboard]);
+  }, [creator?.id, walletAddress, refreshDashboard, refreshTreasuryBalances]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -360,7 +396,7 @@ export default function Dashboard() {
   }
 
   const searchParams = useSearchParams();
-  const activeSection = (searchParams.get("section") as "overview" | "slots" | "bookings" | "create") || "overview";
+  const activeSection = (searchParams.get("section") as "overview" | "treasury" | "slots" | "bookings" | "create") || "overview";
 
   const hasCreator = creator != null;
   const meetings = dashboard?.upcomingMeetings ?? [];
@@ -370,6 +406,10 @@ export default function Dashboard() {
   const earningsByCurrency = dashboard?.earningsByCurrency ?? { SOL: earnings, PUSD: 0 };
   const totalBookings = dashboard?.totalBookings ?? 0;
   const walletBalance = dashboard?.walletBalance ?? null;
+  const treasurySolBalance = treasuryBalances?.sol ?? walletBalance ?? null;
+  const treasuryPusdBalance = treasuryBalances?.pusd ?? 0;
+  const totalEarningsDisplay = earningsByCurrency.SOL + earningsByCurrency.PUSD;
+  const fundedTreasuryAssets = [treasurySolBalance ?? 0, treasuryPusdBalance].filter((amount) => amount > 0).length;
   const profileUrl =
     typeof window !== "undefined" && creator
       ? `${window.location.origin}/explore/${creator.username}`
@@ -444,7 +484,7 @@ export default function Dashboard() {
       await signAndSendTransaction({
         transaction: new Uint8Array(txBytes),
         wallet: solanaWallet,
-        chain: "solana:mainnet-beta",
+        chain: "solana:mainnet",
       });
 
       toast.success("Withdrawal successful!");
@@ -615,6 +655,121 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {activeSection === "treasury" && (
+              <div className="space-y-8">
+                <div>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">Treasury</h2>
+                  <p className="text-sm text-white/50 mt-1">
+                    Track creator earnings and idle capital before deploying into LP strategies.
+                  </p>
+                </div>
+
+                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-6 overflow-hidden relative hover:border-white/15 transition-colors">
+                    <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
+                    <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest">Idle SOL</p>
+                    <p className="mt-3 text-2xl font-bold text-white tabular-nums">
+                      {treasurySolBalance != null ? (
+                        <>{treasurySolBalance.toFixed(4)} <span className="text-lg font-semibold" style={{ color: "#ffd28e" }}>SOL</span></>
+                      ) : (
+                        <span className="text-white/40">—</span>
+                      )}
+                    </p>
+                    <p className="mt-2 text-xs text-white/45">
+                      Current wallet balance available for future treasury actions.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-6 overflow-hidden relative hover:border-white/15 transition-colors">
+                    <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
+                    <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest">Idle PUSD</p>
+                    <p className="mt-3 text-2xl font-bold text-white tabular-nums">
+                      {treasuryLoading ? (
+                        <span className="text-white/40">Loading…</span>
+                      ) : (
+                        <>{treasuryPusdBalance.toFixed(2)} <span className="text-lg font-semibold" style={{ color: "#ffd28e" }}>PUSD</span></>
+                      )}
+                    </p>
+                    <p className="mt-2 text-xs text-white/45">
+                      Stable balance sitting idle in the connected creator wallet.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-6 overflow-hidden relative hover:border-white/15 transition-colors">
+                    <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
+                    <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest">Booking earnings</p>
+                    <p className="mt-3 text-2xl font-bold text-white tabular-nums">
+                      {totalEarningsDisplay.toFixed(2)}
+                    </p>
+                    <p className="mt-2 text-xs text-white/45">
+                      {earningsByCurrency.SOL.toFixed(4)} SOL and {earningsByCurrency.PUSD.toFixed(2)} PUSD earned across {totalBookings} booking{totalBookings !== 1 ? "s" : ""}.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-6 overflow-hidden relative hover:border-white/15 transition-colors">
+                    <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
+                    <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest">LP-ready assets</p>
+                    <p className="mt-3 text-2xl font-bold text-white tabular-nums">
+                      {fundedTreasuryAssets}
+                    </p>
+                    <p className="mt-2 text-xs text-white/45">
+                      Wallet assets with capital available for future LP recommendations and zap actions.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="relative rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm overflow-hidden">
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
+                  <div className="p-6 md:p-8">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="max-w-2xl">
+                        <div className="inline-flex items-center rounded-full border border-[#ffd28e]/25 bg-[#ffd28e]/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#ffd28e]">
+                          Creator treasury
+                        </div>
+                        <h3 className="mt-5 text-xl font-semibold text-white">
+                          Treasury base layer is live
+                        </h3>
+                        <p className="mt-3 text-sm leading-6 text-white/60">
+                          This section now tracks the creator wallet’s idle balances and booking earnings.
+                          Next, we can plug LP Agent recommendations, portfolio tracking, and zap actions into the same workspace.
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-5 min-w-[260px]">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
+                          Treasury snapshot
+                        </p>
+                        <div className="mt-4 space-y-3 text-sm">
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-white/55">Network</span>
+                            <span className="font-medium text-white">{treasuryBalances?.network ?? "SOL"}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-white/55">Wallet</span>
+                            <span className="font-mono text-xs text-white/80">
+                              {walletAddress ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}` : "Not connected"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-white/55">PUSD account</span>
+                            <span className="font-medium text-white">
+                              {treasuryBalances?.pusdTokenAccountExists ? "Ready" : "Not created"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <TreasuryLpStudio
+                  walletAddress={walletAddress}
+                  earningsByCurrency={earningsByCurrency}
+                  totalBookings={totalBookings}
+                />
               </div>
             )}
 

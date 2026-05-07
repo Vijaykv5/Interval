@@ -162,7 +162,7 @@ export function LaunchTokenButton({
           await signAndSendTransaction({
             transaction: bs58.decode(transaction),
             wallet,
-            chain: "solana:mainnet-beta",
+            chain: "solana:mainnet",
           });
         }
 
@@ -175,7 +175,7 @@ export function LaunchTokenButton({
         await signAndSendTransaction({
           transaction: bs58.decode(data.launchTransaction),
           wallet,
-          chain: "solana:mainnet-beta",
+          chain: "solana:mainnet",
         });
       }
 

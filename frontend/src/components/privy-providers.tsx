@@ -12,10 +12,12 @@ const clientId = process.env.NEXT_PUBLIC_PRIVY_CLIENT_ID ?? undefined;
 const mainnetRpcUrl =
   process.env.NEXT_PUBLIC_SOLANA_RPC ??
   process.env.NEXT_PUBLIC_SOLANA_MAINNET_RPC ??
-  "https://api.mainnet-beta.solana.com";
-const mainnetWsUrl = mainnetRpcUrl
-  .replace(/^https:/, "wss:")
-  .replace(/^http:/, "ws:");
+  "";
+const mainnetWsUrl =
+  process.env.NEXT_PUBLIC_SOLANA_WS ??
+  (mainnetRpcUrl
+    ? mainnetRpcUrl.replace(/^https:/, "wss:").replace(/^http:/, "ws:")
+    : "");
 const solanaConnectors = toSolanaWalletConnectors();
 
 export function PrivyProviders({ children }: { children: ReactNode }) {
@@ -47,14 +49,18 @@ export function PrivyProviders({ children }: { children: ReactNode }) {
             connectors: solanaConnectors,
           },
         },
-        solana: {
-          rpcs: {
-            "solana:mainnet-beta": {
-              rpc: createSolanaRpc(mainnetRpcUrl as never),
-              rpcSubscriptions: createSolanaRpcSubscriptions(mainnetWsUrl as never),
-            },
-          },
-        },
+        ...(mainnetRpcUrl
+          ? {
+              solana: {
+                rpcs: {
+                  "solana:mainnet": {
+                    rpc: createSolanaRpc(mainnetRpcUrl as never),
+                    rpcSubscriptions: createSolanaRpcSubscriptions(mainnetWsUrl as never),
+                  },
+                },
+              },
+            }
+          : {}),
         appearance: {
           theme: "dark",
           walletChainType: "solana-only",

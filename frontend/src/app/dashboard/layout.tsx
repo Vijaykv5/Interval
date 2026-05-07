@@ -11,6 +11,7 @@ import { OnboardingModal } from "@/components/onboarding-modal";
 
 const dashboardSections = [
   { section: "overview", label: "Overview" },
+  { section: "treasury", label: "Treasury" },
   { section: "slots", label: "My slots" },
   { section: "bookings", label: "Payments & bookings" },
   { section: "create", label: "Create slot" },
@@ -139,7 +140,7 @@ function DashboardLayoutClient({
   }
 
   return (
-    <div className="flex min-h-screen bg-[#030305]">
+    <div className="flex min-h-screen bg-[#030305] md:h-screen md:overflow-hidden">
       {/* Mobile top bar — visible only on small screens */}
       <header className="md:hidden fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-3 border-b border-white/10 bg-[#030305]/95 backdrop-blur-sm">
         <button
@@ -209,7 +210,7 @@ function DashboardLayoutClient({
       )}
 
       {/* Sidebar — hidden on mobile, visible from md (desktop unchanged) */}
-      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-white/10 bg-gradient-to-b from-black/60 to-black/40">
+      <aside className="hidden md:sticky md:top-0 md:flex md:h-screen w-60 shrink-0 flex-col border-r border-white/10 bg-gradient-to-b from-black/60 to-black/40">
         <div className="p-5 border-b border-white/10">
           <Link
             href="/dashboard"
@@ -231,7 +232,7 @@ function DashboardLayoutClient({
             />
           </Link>
         </div>
-        <nav className="flex-1 p-3 space-y-1">
+        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
           <NavLinks pathname={pathname} currentSection={currentSection} />
         </nav>
         <div className="p-3 border-t border-white/10">
@@ -240,7 +241,7 @@ function DashboardLayoutClient({
       </aside>
 
       {/* Main content — subtle gradient for depth; pt for mobile top bar */}
-      <main className="flex-1 overflow-auto bg-gradient-to-br from-[#030305] via-[#0a0a0d] to-[#030305] pt-14 md:pt-0">
+      <main className="flex-1 overflow-auto bg-gradient-to-br from-[#030305] via-[#0a0a0d] to-[#030305] pt-14 md:h-screen md:pt-0">
         {children}
       </main>
       {showOnboardingModal && walletAddress && (

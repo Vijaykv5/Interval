@@ -19,7 +19,7 @@ export type Currency = "SOL" | "PUSD";
 type SignAndSendTransaction = (args: {
   transaction: Uint8Array;
   wallet: ConnectedStandardSolanaWallet;
-  chain: "solana:mainnet-beta";
+  chain: "solana:mainnet";
 }) => Promise<{ signature: Uint8Array }>;
 
 type PayForSlotParams = {
@@ -165,7 +165,7 @@ export async function payForSlot({
   const result = await signAndSendTransaction({
     transaction: new Uint8Array(serialized),
     wallet,
-    chain: "solana:mainnet-beta",
+    chain: "solana:mainnet",
   });
   const signature = signatureToString(result.signature);
 
