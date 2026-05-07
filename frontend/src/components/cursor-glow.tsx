@@ -1,12 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 export function CursorGlow() {
-  const [mounted, setMounted] = useState(false);
-
   useEffect(() => {
-    setMounted(true);
     const handleMove = (e: MouseEvent) => {
       document.documentElement.style.setProperty("--cursor-x", `${e.clientX}px`);
       document.documentElement.style.setProperty("--cursor-y", `${e.clientY}px`);
@@ -14,8 +11,6 @@ export function CursorGlow() {
     window.addEventListener("mousemove", handleMove);
     return () => window.removeEventListener("mousemove", handleMove);
   }, []);
-
-  if (!mounted) return null;
 
   return (
     <div

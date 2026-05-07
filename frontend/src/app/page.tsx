@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Image from "next/image";
 import { FaqAccordion } from "@/components/faq-accordion";
 import { LandingCtas } from "@/components/landing-ctas";
@@ -261,18 +262,18 @@ export default function Home() {
         <div className="relative mx-auto flex max-w-7xl flex-col gap-8 text-sm text-white/60 md:flex-row md:items-center md:justify-between">
           <p>© 2026 INTERVAL</p>
           <nav aria-label="Footer" className="flex flex-wrap gap-x-8 gap-y-3">
-            <a className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white" href="/">
+            <Link className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white" href="/">
               Home
-            </a>
-            <a className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white" href="/explore">
+            </Link>
+            <Link className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white" href="/explore">
               Explore
-            </a>
-            <a className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white" href="/dashboard">
+            </Link>
+            <Link className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white" href="/dashboard">
               Dashboard
-            </a>
-            <a className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white" href="/profile">
+            </Link>
+            <Link className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white" href="/profile">
               Profile
-            </a>
+            </Link>
           </nav>
         </div>
       </footer>

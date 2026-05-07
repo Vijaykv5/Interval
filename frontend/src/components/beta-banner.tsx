@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 const STORAGE_KEY = "interval-beta-banner-dismissed";
 
 export function BetaBanner() {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    setIsVisible(localStorage.getItem(STORAGE_KEY) !== "true");
-  }, []);
+  const [isVisible, setIsVisible] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(STORAGE_KEY) !== "true";
+  });
 
   if (!isVisible) {
     return null;

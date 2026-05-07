@@ -721,50 +721,6 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="relative rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm overflow-hidden">
-                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd28e]/50 to-transparent opacity-80" />
-                  <div className="p-6 md:p-8">
-                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="max-w-2xl">
-                        <div className="inline-flex items-center rounded-full border border-[#ffd28e]/25 bg-[#ffd28e]/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#ffd28e]">
-                          Creator treasury
-                        </div>
-                        <h3 className="mt-5 text-xl font-semibold text-white">
-                          Treasury base layer is live
-                        </h3>
-                        <p className="mt-3 text-sm leading-6 text-white/60">
-                          This section now tracks the creator wallet’s idle balances and booking earnings.
-                          Next, we can plug LP Agent recommendations, portfolio tracking, and zap actions into the same workspace.
-                        </p>
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/20 p-5 min-w-[260px]">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
-                          Treasury snapshot
-                        </p>
-                        <div className="mt-4 space-y-3 text-sm">
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="text-white/55">Network</span>
-                            <span className="font-medium text-white">{treasuryBalances?.network ?? "SOL"}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="text-white/55">Wallet</span>
-                            <span className="font-mono text-xs text-white/80">
-                              {walletAddress ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}` : "Not connected"}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="text-white/55">PUSD account</span>
-                            <span className="font-medium text-white">
-                              {treasuryBalances?.pusdTokenAccountExists ? "Ready" : "Not created"}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
                 <TreasuryLpStudio
                   walletAddress={walletAddress}
                   earningsByCurrency={earningsByCurrency}

@@ -59,7 +59,11 @@ export default function Explore() {
   };
 
   useEffect(() => {
-    fetchCreators(true);
+    const timeoutId = window.setTimeout(() => {
+      fetchCreators(false);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, []);
 
   // Poll for new slots so newly created slots appear without refresh

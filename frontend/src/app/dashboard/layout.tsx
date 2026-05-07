@@ -74,13 +74,15 @@ function DashboardLayoutClient({
   const currentSection = pathname === "/dashboard" ? (searchParams.get("section") ?? "overview") : null;
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
-  const [authChecked, setAuthChecked] = useState(false);
+  const [checkedWalletAddress, setCheckedWalletAddress] = useState<string | null>(null);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const solanaWallet = wallets[0];
   const walletAddress = solanaWallet?.address ?? null;
   const isOnboardingPage = pathname === "/dashboard/onboarding";
+  const needsCreatorCheck = !isOnboardingPage && Boolean(walletAddress);
+  const authChecked = !needsCreatorCheck || checkedWalletAddress === walletAddress;
 
   useEffect(() => {
     if (!ready) return;
@@ -90,13 +92,7 @@ function DashboardLayoutClient({
       return;
     }
 
-    if (isOnboardingPage) {
-      setAuthChecked(true);
-      return;
-    }
-
-    if (!walletAddress) {
-      setAuthChecked(true);
+    if (!needsCreatorCheck || !walletAddress) {
       return;
     }
 
@@ -109,23 +105,23 @@ function DashboardLayoutClient({
         if (cancelled) return;
         if (!res.ok) {
           setShowOnboardingModal(true);
-          setAuthChecked(true);
+          setCheckedWalletAddress(walletAddress);
           return;
         }
       } catch {
         if (!cancelled) {
           setShowOnboardingModal(true);
-          setAuthChecked(true);
+          setCheckedWalletAddress(walletAddress);
         }
         return;
       }
-      setAuthChecked(true);
+      setCheckedWalletAddress(walletAddress);
     }
     ensureCreator();
     return () => {
       cancelled = true;
     };
-  }, [ready, authenticated, walletAddress, isOnboardingPage, router]);
+  }, [ready, authenticated, walletAddress, needsCreatorCheck, router]);
 
   if (!ready || (!isOnboardingPage && !authChecked)) {
     return (
