@@ -3,7 +3,11 @@
 import { useState } from "react";
 import bs58 from "bs58";
 import { toast } from "sonner";
-import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
+import {
+  useWallets,
+  useSignAndSendTransaction,
+  useSignTransaction,
+} from "@privy-io/react-auth/solana";
 import { ProfilePhotoUpload } from "@/components/profile-photo-upload";
 import {
   canInitializeIntervalPlatform,
@@ -31,6 +35,7 @@ function signatureToString(signature: string | Uint8Array | undefined) {
 export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closable = true }: OnboardingModalProps) {
   const { wallets } = useWallets();
   const { signAndSendTransaction } = useSignAndSendTransaction();
+  const { signTransaction } = useSignTransaction();
   const [username, setUsername] = useState("");
   const [profileImageUrl, setProfileImageUrl] = useState("");
   const [xAccount, setXAccount] = useState("");
@@ -102,30 +107,33 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
       throw new Error("Sponsored onboarding did not return a transaction to sign.");
     }
 
-    const result = await signAndSendTransaction({
+    const result = await signTransaction({
       transaction: Uint8Array.from(Buffer.from(sponsoredData.transaction, "base64")),
       wallet: solanaWallet,
       chain: SOLANA_WALLET_CHAIN,
     });
-    const signature = signatureToString(result.signature);
-    if (!signature) {
-      throw new Error("Sponsored onboarding was submitted, but no signature was returned.");
-    }
-
-    await fetch("/api/solana/confirm", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const finalizeRes = await fetch("/api/creator/onchain-onboard", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
-        signature,
-        blockhash: sponsoredData.blockhash,
+        wallet: walletAddress,
+        transaction: Buffer.from(result.signedTransaction).toString("base64"),
         lastValidBlockHeight: sponsoredData.lastValidBlockHeight,
       }),
-    }).then(async (res) => {
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error ?? "Sponsored onboarding transaction failed to confirm.");
-      }
     });
+    const finalizeData = await finalizeRes.json().catch(() => ({}));
+    if (!finalizeRes.ok) {
+      throw new Error(
+        finalizeData?.error ?? "Sponsored onboarding transaction failed to finalize."
+      );
+    }
+    const signature =
+      typeof finalizeData?.signature === "string" ? finalizeData.signature : null;
+    if (!signature) {
+      throw new Error("Sponsored onboarding was finalized, but no signature was returned.");
+    }
 
     const creatorProfileResult = {
       created: true,

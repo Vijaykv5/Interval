@@ -22,6 +22,11 @@ const DEFAULT_ONBOARDING_LAMPORTS = 50_000_000;
 const TREASURY_TOP_UP_BUFFER_LAMPORTS = 100_000_000;
 
 type OnchainOnboardRequest = { wallet?: string };
+type FinalizeOnchainOnboardRequest = {
+  wallet?: string;
+  transaction?: string;
+  lastValidBlockHeight?: number;
+};
 
 function getAdminKeypair() {
   const secret =
@@ -156,7 +161,6 @@ export async function POST(req: Request) {
     tx.feePayer = admin.publicKey;
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
     tx.recentBlockhash = blockhash;
-    tx.partialSign(admin);
 
     return NextResponse.json({
       alreadyOnchain: false,
@@ -179,6 +183,80 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error: err instanceof Error ? err.message : "Failed to onboard creator on-chain",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const body = (await req.json()) as FinalizeOnchainOnboardRequest;
+    const wallet = body.wallet?.trim();
+    const serializedTransaction = body.transaction?.trim();
+    const lastValidBlockHeight = body.lastValidBlockHeight;
+
+    if (!wallet || !serializedTransaction || !lastValidBlockHeight) {
+      return NextResponse.json(
+        { error: "wallet, transaction, and lastValidBlockHeight are required" },
+        { status: 400 }
+      );
+    }
+
+    const authority = new PublicKey(wallet);
+    const admin = getAdminKeypair();
+    const connection = new Connection(SOLANA_RPC_URL, "confirmed");
+    const creatorProfile = findCreatorProfilePda(authority);
+    const existingCreatorProfile = await connection.getAccountInfo(creatorProfile, "confirmed");
+
+    if (existingCreatorProfile) {
+      return NextResponse.json({
+        alreadyOnchain: true,
+        confirmed: true,
+        signature: null,
+      });
+    }
+
+    const tx = Transaction.from(Buffer.from(serializedTransaction, "base64"));
+
+    if (!tx.feePayer?.equals(admin.publicKey)) {
+      return NextResponse.json(
+        { error: "Sponsored onboarding transaction has an invalid fee payer." },
+        { status: 400 }
+      );
+    }
+
+    const authoritySigned = tx.signatures.some(
+      ({ publicKey, signature }) => publicKey.equals(authority) && signature !== null
+    );
+
+    if (!authoritySigned) {
+      return NextResponse.json(
+        { error: "Creator onboarding transaction is missing the creator signature." },
+        { status: 400 }
+      );
+    }
+
+    tx.partialSign(admin);
+    const signature = await connection.sendRawTransaction(tx.serialize());
+    await confirmSignatureWithPolling({
+      connection,
+      signature,
+      lastValidBlockHeight,
+      commitment: "confirmed",
+    });
+
+    return NextResponse.json({
+      alreadyOnchain: false,
+      confirmed: true,
+      signature,
+    });
+  } catch (err) {
+    console.error("Finalize on-chain creator onboarding error:", err);
+    return NextResponse.json(
+      {
+        error:
+          err instanceof Error ? err.message : "Failed to finalize creator onboarding on-chain",
       },
       { status: 500 }
     );

@@ -4,7 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import bs58 from "bs58";
-import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
+import {
+  useWallets,
+  useSignAndSendTransaction,
+  useSignTransaction,
+} from "@privy-io/react-auth/solana";
 import { toast } from "sonner";
 import { TreasuryLpStudio } from "@/components/treasury-lp-studio";
 import { getDialBlinkUrl } from "@/lib/constants";
@@ -150,6 +154,7 @@ function addMinutesToDatetimeLocal(dt: string, minutes: number): string {
 export default function Dashboard() {
   const { wallets } = useWallets();
   const { signAndSendTransaction } = useSignAndSendTransaction();
+  const { signTransaction } = useSignTransaction();
   const [creator, setCreator] = useState<Creator | null>(null);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -226,9 +231,18 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!walletAddress) {
-      setLoading(false);
       setTreasuryBalances(null);
       setLpPositionsSummary({ count: 0 });
+      return;
+    }
+
+    refreshTreasuryBalances(walletAddress, true);
+    refreshLpPositionsSummary(walletAddress);
+  }, [walletAddress, refreshTreasuryBalances, refreshLpPositionsSummary]);
+
+  useEffect(() => {
+    if (!walletAddress) {
+      setLoading(false);
       setDashboard({
         upcomingMeetings: [],
         earnings: 0,
@@ -264,10 +278,6 @@ export default function Dashboard() {
         const creatorData = await creatorRes.json();
         if (cancelled) return;
         setCreator(creatorData);
-
-        await refreshTreasuryBalances(walletAddress, true);
-        await refreshLpPositionsSummary(walletAddress);
-        if (cancelled) return;
 
         const dashRes = await fetch(
           `/api/dashboard?creatorId=${encodeURIComponent(creatorData.id)}${walletAddress ? `&wallet=${encodeURIComponent(walletAddress)}` : ""}`
@@ -528,30 +538,30 @@ export default function Dashboard() {
             throw new Error("Sponsored onboarding did not return a transaction to sign.");
           }
         } else {
-          const signedResult = await signAndSendTransaction({
+          const signedResult = await signTransaction({
             transaction: Uint8Array.from(Buffer.from(sponsoredData.transaction, "base64")),
             wallet: solanaWallet,
             chain: SOLANA_WALLET_CHAIN,
           });
-          const signature = signatureToString(signedResult.signature);
-          if (!signature) {
-            throw new Error("Sponsored onboarding was submitted, but no signature was returned.");
-          }
-
-          const confirmRes = await fetch("/api/solana/confirm", {
-            method: "POST",
+          const finalizeRes = await fetch("/api/creator/onchain-onboard", {
+            method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              signature,
-              blockhash: sponsoredData.blockhash,
+              wallet: walletAddress,
+              transaction: Buffer.from(signedResult.signedTransaction).toString("base64"),
               lastValidBlockHeight: sponsoredData.lastValidBlockHeight,
             }),
           });
-          if (!confirmRes.ok) {
-            const confirmData = await confirmRes.json().catch(() => ({}));
+          const finalizeData = await finalizeRes.json().catch(() => ({}));
+          if (!finalizeRes.ok) {
             throw new Error(
-              confirmData?.error ?? "Sponsored onboarding transaction failed to confirm."
+              finalizeData?.error ?? "Sponsored onboarding transaction failed to finalize."
             );
+          }
+          const signature =
+            typeof finalizeData?.signature === "string" ? finalizeData.signature : null;
+          if (!signature) {
+            throw new Error("Sponsored onboarding was finalized, but no signature was returned.");
           }
 
           toast.success("Creator profile registered on-chain.");
