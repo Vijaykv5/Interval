@@ -6,6 +6,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallets } from "@privy-io/react-auth/solana";
+import { getAuthIntent } from "@/lib/auth-intent";
+import { NetworkToggleInner } from "@/components/network-toggle";
 import { WalletAuth } from "@/components/wallet-auth";
 
 const dashboardSections = [
@@ -79,6 +81,7 @@ function DashboardLayoutClient({
   const solanaWallet = wallets[0];
   const walletAddress = solanaWallet?.address ?? null;
   const isOnboardingPage = pathname === "/dashboard/onboarding";
+  const creatorIntent = getAuthIntent() === "creator";
   const needsCreatorCheck = Boolean(walletAddress);
   const authChecked = !needsCreatorCheck || checkedWalletAddress === walletAddress;
 
@@ -103,7 +106,7 @@ function DashboardLayoutClient({
         if (cancelled) return;
         if (!res.ok) {
           setCheckedWalletAddress(walletAddress);
-          router.replace("/profile");
+          router.replace(creatorIntent ? "/dashboard/onboarding" : "/explore");
           return;
         }
 
@@ -113,7 +116,7 @@ function DashboardLayoutClient({
 
         if (!hasAccess) {
           setCheckedWalletAddress(walletAddress);
-          router.replace("/profile");
+          router.replace(creatorIntent ? "/dashboard/onboarding" : "/explore");
           return;
         }
 
@@ -125,7 +128,7 @@ function DashboardLayoutClient({
       } catch {
         if (!cancelled) {
           setCheckedWalletAddress(walletAddress);
-          router.replace("/profile");
+          router.replace(creatorIntent ? "/dashboard/onboarding" : "/explore");
         }
         return;
       }
@@ -135,7 +138,7 @@ function DashboardLayoutClient({
     return () => {
       cancelled = true;
     };
-  }, [ready, authenticated, walletAddress, needsCreatorCheck, router, isOnboardingPage]);
+  }, [ready, authenticated, walletAddress, needsCreatorCheck, router, isOnboardingPage, creatorIntent]);
 
   if (!ready || (!isOnboardingPage && !authChecked)) {
     return (
@@ -246,6 +249,9 @@ function DashboardLayoutClient({
           <NavLinks pathname={pathname} currentSection={currentSection} />
         </nav>
         <div className="p-3 border-t border-white/10">
+          <div className="mb-3 flex justify-start">
+            <NetworkToggleInner variant="sidebar" />
+          </div>
           <WalletAuth variant="sidebar" />
         </div>
       </aside>

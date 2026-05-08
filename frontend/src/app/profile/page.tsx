@@ -7,7 +7,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useSignAndSendTransaction, useExportWallet, useWallets } from "@privy-io/react-auth/solana";
 import { LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { SiteNav } from "@/components/site-nav";
-import { SOLANA_WALLET_CHAIN } from "@/lib/solana-config";
+import { getSelectedSolanaWalletChain } from "@/lib/solana-config";
 
 type BalanceData = {
   wallet: string;
@@ -77,6 +77,15 @@ function formatProfileName(email: string | null | undefined, fallback = "Interva
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function getLinkedAccountName(user: ReturnType<typeof usePrivy>["user"]) {
+  const account = user?.linkedAccounts.find(
+    (item): item is typeof item & { name: string } =>
+      "name" in item && typeof item.name === "string" && item.name.trim().length > 0
+  );
+
+  return account?.name ?? null;
 }
 
 function formatTokenAmount(amount: number, decimals: number) {
@@ -152,9 +161,7 @@ export default function ProfilePage() {
     user?.linkedAccounts.find((account) => account.type === "google_oauth" && "email" in account)?.email ??
     user?.linkedAccounts.find((account) => account.type === "email" && "address" in account)?.address ??
     "Interval user";
-  const profileName =
-    user?.linkedAccounts.find((account) => "name" in account && typeof account.name === "string" && account.name.trim().length > 0)?.name ??
-    formatProfileName(email);
+  const profileName = getLinkedAccountName(user) ?? formatProfileName(email);
 
   const loadBalances = useCallback(async () => {
     if (!walletAddress) return;
@@ -309,7 +316,7 @@ export default function ProfilePage() {
       await signAndSendTransaction({
         transaction: new Uint8Array(txBytes),
         wallet,
-        chain: SOLANA_WALLET_CHAIN,
+        chain: getSelectedSolanaWalletChain(),
       });
 
       toast.success("Withdrawal successful!");

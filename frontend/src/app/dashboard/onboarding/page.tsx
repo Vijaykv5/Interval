@@ -19,7 +19,7 @@ import {
   IntervalTransactionError,
 } from "@/lib/interval-program";
 import { ensurePusdTokenAccount } from "@/lib/pusd";
-import { getExplorerTransactionUrl, SOLANA_WALLET_CHAIN } from "@/lib/solana-config";
+import { getExplorerTransactionUrl, getSelectedSolanaWalletChain } from "@/lib/solana-config";
 
 type Creator = {
   id: string;
@@ -157,7 +157,7 @@ export default function ProfilePage() {
     const result = await signTransaction({
       transaction: Uint8Array.from(Buffer.from(sponsoredData.transaction, "base64")),
       wallet: solanaWallet,
-      chain: SOLANA_WALLET_CHAIN,
+      chain: getSelectedSolanaWalletChain(),
     });
     const finalizeRes = await fetch("/api/creator/onchain-onboard", {
       method: "PATCH",

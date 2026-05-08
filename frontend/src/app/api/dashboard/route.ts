@@ -2,20 +2,25 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
-import { SOLANA_NETWORK, SOLANA_RPC_URL } from "@/lib/solana-config";
+import { getSelectedSolanaNetwork, getSolanaRpcUrl, type SolanaNetwork } from "@/lib/solana-config";
 
-const SOLANA_RPC_URLS: string[] = [
-  SOLANA_RPC_URL,
-  ...(SOLANA_NETWORK === "devnet"
-    ? ["https://api.devnet.solana.com"]
-    : ["https://api.mainnet-beta.solana.com"]),
-];
+function getRpcUrls(network: SolanaNetwork) {
+  return [
+    getSolanaRpcUrl(network),
+    ...(network === "devnet"
+      ? ["https://api.devnet.solana.com"]
+      : ["https://api.mainnet-beta.solana.com"]),
+  ];
+}
 
-async function fetchWalletBalanceSol(walletAddress: string): Promise<number | null> {
+async function fetchWalletBalanceSol(
+  walletAddress: string,
+  network: SolanaNetwork
+): Promise<number | null> {
   const pk = new PublicKey(walletAddress);
   const commitments: Array<"confirmed" | "finalized"> = ["finalized", "confirmed"];
 
-  for (const rpcUrl of SOLANA_RPC_URLS) {
+  for (const rpcUrl of getRpcUrls(network)) {
     for (const commitment of commitments) {
       const connection = new Connection(rpcUrl, { commitment });
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -34,7 +39,7 @@ async function fetchWalletBalanceSol(walletAddress: string): Promise<number | nu
             continue;
           }
           if (attempt === 1) {
-            console.warn(`Wallet balance RPC error (${SOLANA_NETWORK}):`, rpcUrl, commitment, err);
+            console.warn(`Wallet balance RPC error (${network}):`, rpcUrl, commitment, err);
           }
         }
       }
@@ -48,6 +53,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const creatorId = searchParams.get("creatorId");
     const walletParam = searchParams.get("wallet")?.trim() || null;
+    const network = getSelectedSolanaNetwork(req.headers.get("cookie"));
 
     if (!creatorId) {
       return NextResponse.json(
@@ -111,7 +117,7 @@ export async function GET(req: Request) {
             }
             throw e;
           }),
-        walletForBalance ? fetchWalletBalanceSol(walletForBalance) : Promise.resolve(null),
+        walletForBalance ? fetchWalletBalanceSol(walletForBalance, network) : Promise.resolve(null),
       ]);
 
     const earnings = earningsResult._sum.price ?? 0;

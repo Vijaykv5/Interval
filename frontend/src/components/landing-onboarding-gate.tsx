@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallets } from "@privy-io/react-auth/solana";
+import { OnboardingModal } from "@/components/onboarding-modal";
 import { clearAuthIntent, getAuthIntent } from "@/lib/auth-intent";
 import { completeCreatorAccess } from "@/lib/creator-access-client";
 
@@ -16,6 +17,7 @@ export function LandingOnboardingGate({ children }: { children: React.ReactNode 
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
   const walletAddress = wallets[0]?.address ?? null;
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
 
   useEffect(() => {
     if (!ready || !authenticated) return;
@@ -28,33 +30,70 @@ export function LandingOnboardingGate({ children }: { children: React.ReactNode 
       return;
     }
 
-    if (authIntent === "creator") {
-      if (!walletAddress) return;
+    if (!walletAddress) return;
 
-      let cancelled = false;
+    let cancelled = false;
 
-      async function routeCreator() {
-        try {
-          await completeCreatorAccess(walletAddress);
-          const res = await fetch(`/api/creator?wallet=${encodeURIComponent(walletAddress)}`);
-          if (cancelled) return;
-          clearAuthIntent();
-          router.replace(res.ok ? "/dashboard" : "/dashboard/onboarding");
-        } catch {
-          if (cancelled) return;
-          clearAuthIntent();
-          router.replace("/dashboard/onboarding");
+    async function routeAuthenticatedLanding() {
+      try {
+        const accessRes = await fetch(
+          `/api/auth/creator-access?wallet=${encodeURIComponent(walletAddress)}`
+        );
+        const accessData = await accessRes.json().catch(() => ({}));
+        if (cancelled) return;
+
+        if (!accessRes.ok) {
+          router.replace("/explore");
+          return;
         }
-      }
 
-      routeCreator();
-      return () => {
-        cancelled = true;
-      };
+        if (accessData?.hasAccess === true) {
+          if (accessData?.creatorExists !== true) {
+            await completeCreatorAccess(walletAddress);
+            if (cancelled) return;
+            setOnboardingOpen(true);
+            return;
+          }
+
+          if (accessData?.onchainReady === true) {
+            clearAuthIntent();
+            router.replace("/dashboard");
+            return;
+          }
+
+          setOnboardingOpen(true);
+          return;
+        }
+
+        router.replace("/explore");
+      } catch {
+        if (cancelled) return;
+        router.replace("/explore");
+      }
     }
 
-    router.replace("/profile");
+    routeAuthenticatedLanding();
+    return () => {
+      cancelled = true;
+    };
   }, [authenticated, ready, router, walletAddress]);
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {walletAddress ? (
+        <OnboardingModal
+          open={onboardingOpen}
+          walletAddress={walletAddress}
+          closable={false}
+          onClose={() => setOnboardingOpen(false)}
+          onSuccess={() => {
+            clearAuthIntent();
+            setOnboardingOpen(false);
+            router.replace("/dashboard");
+          }}
+        />
+      ) : null}
+    </>
+  );
 }

@@ -1,10 +1,9 @@
 import { createActionHeaders } from "@solana/actions";
-import { SOLANA_NETWORK } from "@/lib/solana-config";
+import { getSelectedSolanaNetwork } from "@/lib/solana-config";
 
-const chainId = SOLANA_NETWORK;
-const headers = createActionHeaders({ chainId, actionVersion: "1" });
-
-export async function GET() {
+export async function GET(req: Request) {
+  const chainId = getSelectedSolanaNetwork(req.headers.get("cookie"));
+  const headers = createActionHeaders({ chainId, actionVersion: "1" });
   const payload = {
     rules: [
       {
@@ -16,6 +15,8 @@ export async function GET() {
   return Response.json(payload, { headers });
 }
 
-export async function OPTIONS() {
+export async function OPTIONS(req: Request) {
+  const chainId = getSelectedSolanaNetwork(req.headers.get("cookie"));
+  const headers = createActionHeaders({ chainId, actionVersion: "1" });
   return new Response(null, { status: 204, headers });
 }

@@ -16,7 +16,7 @@ import {
 } from "@/lib/interval-program";
 import { decodePrivateKey } from "@/lib/privy-wallet-server";
 import { confirmSignatureWithPolling } from "@/lib/solana-confirmation";
-import { SOLANA_RPC_URL } from "@/lib/solana-config";
+import { getSelectedSolanaNetwork, getSolanaRpcUrl } from "@/lib/solana-config";
 
 const DEFAULT_ONBOARDING_LAMPORTS = 50_000_000;
 const TREASURY_TOP_UP_BUFFER_LAMPORTS = 100_000_000;
@@ -125,7 +125,8 @@ export async function POST(req: Request) {
 
     const authority = new PublicKey(wallet);
     const admin = getAdminKeypair();
-    const connection = new Connection(SOLANA_RPC_URL, "confirmed");
+    const network = getSelectedSolanaNetwork(req.headers.get("cookie"));
+    const connection = new Connection(getSolanaRpcUrl(network), "confirmed");
     const creatorProfile = findCreatorProfilePda(authority);
     const existingCreatorProfile = await connection.getAccountInfo(creatorProfile, "confirmed");
 
@@ -205,7 +206,8 @@ export async function PATCH(req: Request) {
 
     const authority = new PublicKey(wallet);
     const admin = getAdminKeypair();
-    const connection = new Connection(SOLANA_RPC_URL, "confirmed");
+    const network = getSelectedSolanaNetwork(req.headers.get("cookie"));
+    const connection = new Connection(getSolanaRpcUrl(network), "confirmed");
     const creatorProfile = findCreatorProfilePda(authority);
     const existingCreatorProfile = await connection.getAccountInfo(creatorProfile, "confirmed");
 

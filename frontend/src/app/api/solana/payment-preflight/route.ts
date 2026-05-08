@@ -6,9 +6,7 @@ import {
 } from "@solana/spl-token";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { NextResponse } from "next/server";
-import { getPusdMintPublicKey, SOLANA_RPC_URL } from "@/lib/solana-config";
-
-const PUSD_MINT = getPusdMintPublicKey();
+import { getPusdMintPublicKey, getSelectedSolanaNetwork, getSolanaRpcUrl } from "@/lib/solana-config";
 
 type PreflightRequest = {
   payerWallet?: string;
@@ -34,7 +32,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const connection = new Connection(SOLANA_RPC_URL, "confirmed");
+    const network = getSelectedSolanaNetwork(req.headers.get("cookie"));
+    const connection = new Connection(getSolanaRpcUrl(network), "confirmed");
     const payer = new PublicKey(body.payerWallet);
     const creator = new PublicKey(body.creatorWallet);
 
@@ -43,15 +42,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ lamports });
     }
 
-    if (!PUSD_MINT) {
+    const pusdMint = getPusdMintPublicKey(network);
+
+    if (!pusdMint) {
       return NextResponse.json(
         { error: "PUSD is not configured for the current Solana network" },
         { status: 400 }
       );
     }
 
-    const userAta = await getAssociatedTokenAddress(PUSD_MINT, payer);
-    const creatorAta = await getAssociatedTokenAddress(PUSD_MINT, creator);
+    const userAta = await getAssociatedTokenAddress(pusdMint, payer);
+    const creatorAta = await getAssociatedTokenAddress(pusdMint, creator);
 
     let userTokenAmount = "0";
     let userTokenAccountExists = false;

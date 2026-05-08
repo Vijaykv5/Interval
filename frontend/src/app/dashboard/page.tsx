@@ -20,7 +20,7 @@ import {
   IntervalTransactionError,
   releaseBookingFunds,
 } from "@/lib/interval-program";
-import { SOLANA_WALLET_CHAIN } from "@/lib/solana-config";
+import { getSelectedSolanaWalletChain } from "@/lib/solana-config";
 import {
   PublicKey,
   SystemProgram,
@@ -666,7 +666,7 @@ export default function Dashboard() {
           const signedResult = await signTransaction({
             transaction: Uint8Array.from(Buffer.from(sponsoredData.transaction, "base64")),
             wallet: solanaWallet,
-            chain: SOLANA_WALLET_CHAIN,
+            chain: getSelectedSolanaWalletChain(),
           });
           const finalizeRes = await fetch("/api/creator/onchain-onboard", {
             method: "PATCH",
@@ -753,7 +753,7 @@ export default function Dashboard() {
       await signAndSendTransaction({
         transaction: new Uint8Array(txBytes),
         wallet: solanaWallet,
-        chain: SOLANA_WALLET_CHAIN,
+        chain: getSelectedSolanaWalletChain(),
       });
 
       toast.success("Withdrawal successful!");

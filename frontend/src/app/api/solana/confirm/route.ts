@@ -1,7 +1,7 @@
 import { Connection } from "@solana/web3.js";
 import { NextResponse } from "next/server";
 import { confirmSignatureWithPolling } from "@/lib/solana-confirmation";
-import { SOLANA_RPC_URL } from "@/lib/solana-config";
+import { getSelectedSolanaNetwork, getSolanaRpcUrl } from "@/lib/solana-config";
 
 type ConfirmRequest = {
   signature?: string;
@@ -20,7 +20,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const connection = new Connection(SOLANA_RPC_URL, "confirmed");
+    const network = getSelectedSolanaNetwork(req.headers.get("cookie"));
+    const connection = new Connection(getSolanaRpcUrl(network), "confirmed");
     await confirmSignatureWithPolling({
       connection,
       signature: body.signature,

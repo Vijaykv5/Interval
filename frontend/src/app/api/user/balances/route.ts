@@ -9,11 +9,9 @@ import { NextResponse } from "next/server";
 import {
   getPusdMintPublicKey,
   PUSD_DECIMALS,
-  SOLANA_NETWORK,
-  SOLANA_RPC_URL,
+  getSelectedSolanaNetwork,
+  getSolanaRpcUrl,
 } from "@/lib/solana-config";
-
-const PUSD_MINT = getPusdMintPublicKey();
 
 function isTokenAccountMissing(err: unknown) {
   return (
@@ -34,16 +32,18 @@ export async function GET(req: Request) {
       );
     }
 
-    const connection = new Connection(SOLANA_RPC_URL, "confirmed");
+    const network = getSelectedSolanaNetwork(req.headers.get("cookie"));
+    const connection = new Connection(getSolanaRpcUrl(network), "confirmed");
     const owner = new PublicKey(wallet);
+    const pusdMint = getPusdMintPublicKey(network);
 
     const lamports = await connection.getBalance(owner, "confirmed");
     let pusdBaseUnits = "0";
     let pusdTokenAccountExists = false;
     let pusdAta = "";
 
-    if (PUSD_MINT) {
-      const pusdAtaAddress = await getAssociatedTokenAddress(PUSD_MINT, owner);
+    if (pusdMint) {
+      const pusdAtaAddress = await getAssociatedTokenAddress(pusdMint, owner);
       pusdAta = pusdAtaAddress.toBase58();
 
       try {
@@ -57,7 +57,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       wallet,
-      network: SOLANA_NETWORK,
+      network,
       sol: lamports / 1e9,
       lamports,
       pusd: Number(pusdBaseUnits) / 10 ** PUSD_DECIMALS,

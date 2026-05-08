@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useSignTransaction, useWallets } from "@privy-io/react-auth/solana";
 import { toast } from "sonner";
-import { SOLANA_WALLET_CHAIN } from "@/lib/solana-config";
+import { getSelectedSolanaWalletChain } from "@/lib/solana-config";
 
 type EarningsByCurrency = {
   SOL: number;
@@ -335,7 +335,7 @@ export function TreasuryLpStudio({
         const result = await signTransaction({
           transaction: base64ToBytes(transaction),
           wallet: solanaWallet,
-          chain: SOLANA_WALLET_CHAIN,
+          chain: getSelectedSolanaWalletChain(),
         });
         return bytesToBase64(result.signedTransaction);
       } catch (error) {

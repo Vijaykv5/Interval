@@ -23,14 +23,14 @@ function createPrismaClient() {
       keepAlive: true,
     });
 
-  pool.on("error", (error) => {
+  pool.on("error", (error: unknown) => {
     console.error("Postgres pool error:", error);
   });
 
   globalForPrisma.prismaPool = pool;
 
   const adapter = new PrismaPg(pool, {
-    onPoolError: (error) => {
+    onPoolError: (error: unknown) => {
       console.error("Prisma Postgres adapter error:", error);
     },
   });

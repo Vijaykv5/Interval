@@ -6,6 +6,7 @@ import {
   getAllowedCreatorAccessCodes,
   normalizeCreatorAccessCode,
 } from "@/lib/creator-access";
+import { isCreatorRegisteredOnChain } from "@/lib/interval-program";
 import { NextRequest, NextResponse } from "next/server";
 
 async function hasCreatorProfile(wallet: string) {
@@ -29,13 +30,20 @@ export async function GET(req: NextRequest) {
     }
 
     const creatorExists = await hasCreatorProfile(wallet);
+    const onchainReady = creatorExists
+      ? await isCreatorRegisteredOnChain(wallet).catch(() => false)
+      : false;
+    const pendingAccess =
+      req.cookies.get(CREATOR_ACCESS_PENDING_COOKIE)?.value === "granted";
     const grantedWallet = req.cookies.get(CREATOR_ACCESS_WALLET_COOKIE)?.value?.trim();
-    const hasAccess = creatorExists || grantedWallet === wallet;
+    const hasAccess = creatorExists || grantedWallet === wallet || pendingAccess;
 
     return NextResponse.json({
       ok: true,
       creatorExists,
+      onchainReady,
       hasAccess,
+      pendingAccess,
     });
   } catch (error) {
     console.error("[creator-access:get]", error);

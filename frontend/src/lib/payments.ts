@@ -14,7 +14,7 @@ import { payForSlotWithIntervalEscrow } from "@/lib/interval-program";
 import {
   getPusdMintPublicKey,
   PUSD_DECIMALS,
-  SOLANA_WALLET_CHAIN,
+  getSelectedSolanaWalletChain,
   type SolanaWalletChain,
 } from "@/lib/solana-config";
 
@@ -183,7 +183,7 @@ export async function payForSlot({
     const result = await signAndSendTransaction({
       transaction: new Uint8Array(serialized),
       wallet,
-      chain: SOLANA_WALLET_CHAIN,
+      chain: getSelectedSolanaWalletChain(),
     });
     const signature = signatureToString(result.signature);
 

@@ -26,20 +26,21 @@ import { buildBookSlotInstruction } from "@/lib/interval-program";
 import {
   getPusdMintPublicKey,
   PUSD_DECIMALS,
-  SOLANA_NETWORK,
-  SOLANA_RPC_URL,
+  getSelectedSolanaNetwork,
+  getSolanaRpcUrl,
 } from "@/lib/solana-config";
 
 export const dynamic = "force-dynamic";
 
-const chainId = SOLANA_NETWORK;
 const actionVersion = "1";
-const PUSD_MINT = getPusdMintPublicKey();
 
-const headers = createActionHeaders({
-  chainId,
-  actionVersion,
-});
+function getActionHeaders(req: Request) {
+  const chainId = getSelectedSolanaNetwork(req.headers.get("cookie"));
+  return createActionHeaders({
+    chainId,
+    actionVersion,
+  });
+}
 
 function disabledAction(
   _req: Request,
@@ -47,6 +48,7 @@ function disabledAction(
   label: string,
   icon = ACTION_ICON_FALLBACK
 ): Response {
+  const headers = getActionHeaders(_req);
   const payload: ActionGetResponse = {
     type: "action",
     icon,
@@ -79,6 +81,7 @@ function getActionIcon(
 
 export async function GET(req: Request) {
   try {
+    const headers = getActionHeaders(req);
     const { searchParams } = new URL(req.url);
     const slotId = searchParams.get("slotId");
 
@@ -180,11 +183,13 @@ export async function GET(req: Request) {
   }
 }
 
-export async function OPTIONS() {
+export async function OPTIONS(req: Request) {
+  const headers = getActionHeaders(req);
   return new Response(null, { status: 204, headers });
 }
 
 export async function POST(req: Request) {
+  const headers = getActionHeaders(req);
   let body: ActionPostRequest;
   try {
     const raw = await req.json();
@@ -235,7 +240,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const connection = new Connection(SOLANA_RPC_URL);
+    const network = getSelectedSolanaNetwork(req.headers.get("cookie"));
+    const connection = new Connection(getSolanaRpcUrl(network));
+    const pusdMint = getPusdMintPublicKey(network);
     const creatorWallet = new PublicKey(slot.creator.wallet);
     const amountBaseUnits =
       slot.currency === "SOL"
@@ -267,15 +274,15 @@ export async function POST(req: Request) {
 
       paymentIxs.push(instruction);
     } else {
-      if (!PUSD_MINT) {
+      if (!pusdMint) {
         return Response.json(
           { message: "PUSD is not configured for the current Solana network." } satisfies ActionError,
           { status: 400, headers }
         );
       }
 
-      const userAta = await getAssociatedTokenAddress(PUSD_MINT, account);
-      const creatorAta = await getAssociatedTokenAddress(PUSD_MINT, creatorWallet);
+      const userAta = await getAssociatedTokenAddress(pusdMint, account);
+      const creatorAta = await getAssociatedTokenAddress(pusdMint, creatorWallet);
       try {
         const userAccount = await getAccount(connection, userAta, "confirmed");
         if (userAccount.amount < amountBaseUnits) {
@@ -299,7 +306,7 @@ export async function POST(req: Request) {
             account,
             creatorAta,
             creatorWallet,
-            PUSD_MINT
+            pusdMint
           )
         );
       }

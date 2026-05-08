@@ -4,35 +4,31 @@ import { PrivyProvider } from "@privy-io/react-auth";
 import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
 import { createSolanaRpc, createSolanaRpcSubscriptions } from "@solana/kit";
 import { ReactNode } from "react";
-import { SOLANA_NETWORK } from "@/lib/solana-config";
+import { getSolanaRpcUrl, getSolanaWsUrl } from "@/lib/solana-config";
 
 const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 const clientId = process.env.NEXT_PUBLIC_PRIVY_CLIENT_ID ?? undefined;
-const solanaRpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC ?? "https://api.devnet.solana.com";
-const solanaWsUrl =
-  process.env.NEXT_PUBLIC_SOLANA_WS ??
-  solanaRpcUrl.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
-const defaultExplorerUrl =
-  SOLANA_NETWORK === "mainnet-beta"
-    ? "https://explorer.solana.com"
-    : `https://explorer.solana.com?cluster=${SOLANA_NETWORK}`;
+const mainnetRpcUrl = getSolanaRpcUrl("mainnet-beta");
+const devnetRpcUrl = getSolanaRpcUrl("devnet");
+const mainnetWsUrl = getSolanaWsUrl("mainnet-beta");
+const devnetWsUrl = getSolanaWsUrl("devnet");
 
 const solanaConnectors = toSolanaWalletConnectors();
 const solanaRpcs = {
   "solana:mainnet": {
-    rpc: createSolanaRpc(solanaRpcUrl),
-    rpcSubscriptions: createSolanaRpcSubscriptions(solanaWsUrl),
-    blockExplorerUrl: defaultExplorerUrl,
+    rpc: createSolanaRpc(mainnetRpcUrl),
+    rpcSubscriptions: createSolanaRpcSubscriptions(mainnetWsUrl),
+    blockExplorerUrl: "https://explorer.solana.com",
   },
   "solana:devnet": {
-    rpc: createSolanaRpc(solanaRpcUrl),
-    rpcSubscriptions: createSolanaRpcSubscriptions(solanaWsUrl),
-    blockExplorerUrl: defaultExplorerUrl,
+    rpc: createSolanaRpc(devnetRpcUrl),
+    rpcSubscriptions: createSolanaRpcSubscriptions(devnetWsUrl),
+    blockExplorerUrl: "https://explorer.solana.com?cluster=devnet",
   },
   "solana:testnet": {
-    rpc: createSolanaRpc(solanaRpcUrl),
-    rpcSubscriptions: createSolanaRpcSubscriptions(solanaWsUrl),
-    blockExplorerUrl: defaultExplorerUrl,
+    rpc: createSolanaRpc(devnetRpcUrl),
+    rpcSubscriptions: createSolanaRpcSubscriptions(devnetWsUrl),
+    blockExplorerUrl: "https://explorer.solana.com?cluster=testnet",
   },
 } as const;
 

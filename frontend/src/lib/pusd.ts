@@ -9,7 +9,7 @@ import bs58 from "bs58";
 import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
 import {
   getPusdMintPublicKey,
-  SOLANA_WALLET_CHAIN,
+  getSelectedSolanaWalletChain,
   type SolanaWalletChain,
 } from "@/lib/solana-config";
 
@@ -86,7 +86,7 @@ export async function ensurePusdTokenAccount({
   const result = await signAndSendTransaction({
     transaction: new Uint8Array(serialized),
     wallet,
-    chain: SOLANA_WALLET_CHAIN,
+    chain: getSelectedSolanaWalletChain(),
   });
   const signature = signatureToString(result.signature);
 

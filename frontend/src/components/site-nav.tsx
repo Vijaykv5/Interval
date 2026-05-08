@@ -2,6 +2,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NetworkToggleInner } from "@/components/network-toggle";
 import { WalletAuth } from "@/components/wallet-auth";
 
 type SiteNavProps = {
@@ -36,6 +37,9 @@ export function SiteNav({ minimal = false }: SiteNavProps) {
         />
       </Link>
       <nav className="flex items-center gap-2 sm:gap-3">
+        <div className="hidden sm:flex">
+          <NetworkToggleInner variant="compact" />
+        </div>
         {!minimal && (
           <>
             <Link

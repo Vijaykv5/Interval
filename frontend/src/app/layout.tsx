@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Geist, Geist_Mono, Press_Start_2P, Bebas_Neue } from "next/font/google";
 import localFont from "next/font/local";
 import { Toaster } from "sonner";
 import { BetaBanner } from "@/components/beta-banner";
+import { NetworkProvider } from "@/components/network-provider";
 import { PrivyProviders } from "@/components/privy-providers";
+import { getSelectedSolanaNetwork } from "@/lib/solana-config";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -48,37 +51,46 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore
+    .getAll()
+    .map(({ name, value }) => `${name}=${value}`)
+    .join("; ");
+  const initialNetwork = getSelectedSolanaNetwork(cookieHeader);
+
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${pressStart2P.variable} ${bebasNeue.variable} ${archivoCondensed.variable} ${utendo.variable} antialiased min-h-screen bg-[#030305]`}
       >
         {/* Ready to Entangle – stacked background layers */}
-        <div className="bg-orbit-base" aria-hidden />
-        <div className="bg-starfield" aria-hidden />
-        <div className="bg-orbit-glow" aria-hidden />
+        <div className="bg-orbit-base" />
+        <div className="bg-starfield" />
+        <div className="bg-orbit-glow" />
         <div className="relative z-10 min-h-screen bg-transparent">
-          <BetaBanner />
-          <PrivyProviders>{children}</PrivyProviders>
-          <Toaster
-            position="bottom-right"
-            theme="dark"
-            className="interval-toaster"
-            toastOptions={{
-              classNames: {
-                toast: "interval-toast",
-                title: "interval-toast-title",
-                description: "interval-toast-description",
-                success: "interval-toast-success",
-                error: "interval-toast-error",
-              },
-            }}
-          />
+          <NetworkProvider initialNetwork={initialNetwork}>
+            <BetaBanner />
+            <PrivyProviders>{children}</PrivyProviders>
+            <Toaster
+              position="bottom-right"
+              theme="dark"
+              className="interval-toaster"
+              toastOptions={{
+                classNames: {
+                  toast: "interval-toast",
+                  title: "interval-toast-title",
+                  description: "interval-toast-description",
+                  success: "interval-toast-success",
+                  error: "interval-toast-error",
+                },
+              }}
+            />
+          </NetworkProvider>
         </div>
       </body>
     </html>

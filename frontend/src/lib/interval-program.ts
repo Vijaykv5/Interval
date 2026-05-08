@@ -1,7 +1,7 @@
 import { Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
 import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
-import { SOLANA_RPC_URL, SOLANA_WALLET_CHAIN, type SolanaWalletChain } from "@/lib/solana-config";
+import { getSelectedSolanaWalletChain, getSolanaRpcUrl, type SolanaWalletChain } from "@/lib/solana-config";
 
 export const INTERVAL_PROGRAM_ID = new PublicKey("4ATtXLmT25nh447GjP9BtdWJudN8uuqcNNmawRWexfx6");
 
@@ -60,7 +60,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 function getReadConnection() {
-  return new Connection(SOLANA_RPC_URL, "confirmed");
+  return new Connection(getSolanaRpcUrl(), "confirmed");
 }
 
 async function ensureFeePayerCanCoverFees(connection: Connection, feePayer: PublicKey) {
@@ -245,7 +245,7 @@ async function sendAndConfirmTransaction({
     result = await signAndSendTransaction({
       transaction: new Uint8Array(serialized),
       wallet,
-      chain: SOLANA_WALLET_CHAIN,
+      chain: getSelectedSolanaWalletChain(),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

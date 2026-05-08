@@ -2,18 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useExportWallet, useWallets } from "@privy-io/react-auth/solana";
 import { AuthRoleModal } from "@/components/auth-role-modal";
 import { CreatorAccessCodeModal } from "@/components/creator-access-code-modal";
 import {
   clearAuthIntent,
-  getAuthIntent,
   setAuthIntent,
   type AuthIntentRole,
 } from "@/lib/auth-intent";
-import { completeCreatorAccess } from "@/lib/creator-access-client";
 
 function shortenAddress(address: string) {
   if (!address || address.length < 10) return address;
@@ -46,8 +43,6 @@ type WalletAuthProps = {
 };
 
 export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletAuthProps) {
-  const router = useRouter();
-  const pathname = usePathname();
   const { ready, authenticated, login, logout, getAccessToken, user } = usePrivy();
   const { wallets } = useWallets();
   const { exportWallet } = useExportWallet();
@@ -85,48 +80,6 @@ export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletA
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownOpen]);
-
-  useEffect(() => {
-    if (!isLanding) return;
-    if (!ready || !authenticated) return;
-
-    const authIntent = getAuthIntent();
-    if (!authIntent) return;
-
-    if (authIntent === "user") {
-      clearAuthIntent();
-      setRoleModalOpen(false);
-      if (pathname !== "/profile") {
-        router.push("/profile");
-      }
-      return;
-    }
-
-    if (!address) return;
-
-    let cancelled = false;
-
-    async function routeCreator() {
-      try {
-        await completeCreatorAccess(address);
-        const res = await fetch(`/api/creator?wallet=${encodeURIComponent(address)}`);
-        if (cancelled) return;
-        clearAuthIntent();
-        setRoleModalOpen(false);
-        router.push(res.ok ? "/dashboard" : "/dashboard/onboarding");
-      } catch {
-        if (cancelled) return;
-        clearAuthIntent();
-        setRoleModalOpen(false);
-        router.push("/dashboard/onboarding");
-      }
-    }
-
-    routeCreator();
-    return () => {
-      cancelled = true;
-    };
-  }, [address, authenticated, isLanding, pathname, ready, router]);
 
   useEffect(() => {
     if (variant !== "sidebar" || !address) {
@@ -226,13 +179,6 @@ export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletA
     }
 
     function handleRoleSelect(role: AuthIntentRole) {
-      if (isLanding) {
-        clearAuthIntent();
-        setRoleModalOpen(false);
-        router.push("/explore");
-        return;
-      }
-
       if (role === "creator") {
         setRoleModalOpen(false);
         setCreatorAccessError(null);

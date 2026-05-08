@@ -1,10 +1,11 @@
 import { Connection } from "@solana/web3.js";
 import { NextResponse } from "next/server";
-import { SOLANA_RPC_URL } from "@/lib/solana-config";
+import { getSelectedSolanaNetwork, getSolanaRpcUrl } from "@/lib/solana-config";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const connection = new Connection(SOLANA_RPC_URL);
+    const network = getSelectedSolanaNetwork(req.headers.get("cookie"));
+    const connection = new Connection(getSolanaRpcUrl(network));
     const [latestBlockhash, slot, blockHeight] = await Promise.all([
       connection.getLatestBlockhash("confirmed"),
       connection.getSlot("confirmed"),
