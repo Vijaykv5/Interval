@@ -7,7 +7,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallets } from "@privy-io/react-auth/solana";
 import { WalletAuth } from "@/components/wallet-auth";
-import { OnboardingModal } from "@/components/onboarding-modal";
 
 const dashboardSections = [
   { section: "overview", label: "Overview" },
@@ -75,13 +74,12 @@ function DashboardLayoutClient({
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
   const [checkedWalletAddress, setCheckedWalletAddress] = useState<string | null>(null);
-  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const solanaWallet = wallets[0];
   const walletAddress = solanaWallet?.address ?? null;
   const isOnboardingPage = pathname === "/dashboard/onboarding";
-  const needsCreatorCheck = !isOnboardingPage && Boolean(walletAddress);
+  const needsCreatorCheck = Boolean(walletAddress);
   const authChecked = !needsCreatorCheck || checkedWalletAddress === walletAddress;
 
   useEffect(() => {
@@ -97,31 +95,47 @@ function DashboardLayoutClient({
     }
 
     let cancelled = false;
-    async function ensureCreator() {
+    async function ensureCreatorAccess() {
       try {
         const res = await fetch(
-          `/api/creator?wallet=${encodeURIComponent(walletAddress)}`
+          `/api/auth/creator-access?wallet=${encodeURIComponent(walletAddress)}`
         );
         if (cancelled) return;
         if (!res.ok) {
-          setShowOnboardingModal(true);
           setCheckedWalletAddress(walletAddress);
+          router.replace("/profile");
+          return;
+        }
+
+        const data = await res.json().catch(() => ({}));
+        const hasAccess = data?.hasAccess === true;
+        const creatorExists = data?.creatorExists === true;
+
+        if (!hasAccess) {
+          setCheckedWalletAddress(walletAddress);
+          router.replace("/profile");
+          return;
+        }
+
+        if (!creatorExists && !isOnboardingPage) {
+          setCheckedWalletAddress(walletAddress);
+          router.replace("/dashboard/onboarding");
           return;
         }
       } catch {
         if (!cancelled) {
-          setShowOnboardingModal(true);
           setCheckedWalletAddress(walletAddress);
+          router.replace("/profile");
         }
         return;
       }
       setCheckedWalletAddress(walletAddress);
     }
-    ensureCreator();
+    ensureCreatorAccess();
     return () => {
       cancelled = true;
     };
-  }, [ready, authenticated, walletAddress, needsCreatorCheck, router]);
+  }, [ready, authenticated, walletAddress, needsCreatorCheck, router, isOnboardingPage]);
 
   if (!ready || (!isOnboardingPage && !authChecked)) {
     return (
@@ -240,21 +254,6 @@ function DashboardLayoutClient({
       <main className="flex-1 overflow-auto bg-gradient-to-br from-[#030305] via-[#0a0a0d] to-[#030305] pt-14 md:h-screen md:pt-0">
         {children}
       </main>
-      {showOnboardingModal && walletAddress && (
-        <OnboardingModal
-          open={showOnboardingModal}
-          walletAddress={walletAddress}
-          closable={false}
-          onSuccess={() => {
-            setShowOnboardingModal(false);
-            router.replace("/dashboard");
-          }}
-          onClose={() => {
-            setShowOnboardingModal(false);
-            router.replace("/dashboard/onboarding");
-          }}
-        />
-      )}
     </div>
   );
 }

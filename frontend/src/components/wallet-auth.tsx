@@ -5,27 +5,19 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useExportWallet, useWallets } from "@privy-io/react-auth/solana";
+import { AuthRoleModal } from "@/components/auth-role-modal";
+import { CreatorAccessCodeModal } from "@/components/creator-access-code-modal";
+import {
+  clearAuthIntent,
+  getAuthIntent,
+  setAuthIntent,
+  type AuthIntentRole,
+} from "@/lib/auth-intent";
+import { completeCreatorAccess } from "@/lib/creator-access-client";
 
 function shortenAddress(address: string) {
   if (!address || address.length < 10) return address;
   return `${address.slice(0, 4)}...${address.slice(-4)}`;
-}
-
-/** First character + "..." + last 4 (e.g. "A...xy34") */
-function truncateAddressFirstLetter(address: string) {
-  if (!address || address.length < 6) return address;
-  return `${address[0]}...${address.slice(-4)}`;
-}
-
-function getConnectedWithLabel(user: { linkedAccounts?: Array<{ type: string; address?: string }> } | null): string | null {
-  if (!user?.linkedAccounts?.length) return null;
-  const google = user.linkedAccounts.find((a) => a.type === "google_oauth");
-  if (google) return "Gmail";
-  const email = user.linkedAccounts.find((a) => a.type === "email");
-  if (email && "address" in email && typeof (email as { address?: string }).address === "string") {
-    return (email as { address: string }).address;
-  }
-  return null;
 }
 
 /** Gmail/email display name for the header button (email or "Gmail") */
@@ -66,11 +58,22 @@ export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletA
   const [copied, setCopied] = useState<"address" | "recovery" | null>(null);
   const [creatorProfileImageUrl, setCreatorProfileImageUrl] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [pendingProfileRedirect, setPendingProfileRedirect] = useState(false);
+  const [roleModalOpen, setRoleModalOpen] = useState(false);
+  const [creatorAccessOpen, setCreatorAccessOpen] = useState(false);
+  const [creatorAccessCode, setCreatorAccessCode] = useState("");
+  const [creatorAccessLoading, setCreatorAccessLoading] = useState(false);
+  const [creatorAccessError, setCreatorAccessError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const solanaWallet = wallets[0];
   const address = solanaWallet?.address ?? null;
+  const isSidebar = variant === "sidebar";
+  const isLanding = variant === "landing";
+  const wrapperClass = isSidebar
+    ? "p-3"
+    : isLanding
+      ? ""
+      : "absolute top-4 right-4";
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -84,12 +87,46 @@ export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletA
   }, [dropdownOpen]);
 
   useEffect(() => {
-    if (!pendingProfileRedirect || !ready || !authenticated) return;
-    setPendingProfileRedirect(false);
-    if (pathname !== "/profile") {
-      router.push("/profile");
+    if (!isLanding) return;
+    if (!ready || !authenticated) return;
+
+    const authIntent = getAuthIntent();
+    if (!authIntent) return;
+
+    if (authIntent === "user") {
+      clearAuthIntent();
+      setRoleModalOpen(false);
+      if (pathname !== "/profile") {
+        router.push("/profile");
+      }
+      return;
     }
-  }, [authenticated, pathname, pendingProfileRedirect, ready, router]);
+
+    if (!address) return;
+
+    let cancelled = false;
+
+    async function routeCreator() {
+      try {
+        await completeCreatorAccess(address);
+        const res = await fetch(`/api/creator?wallet=${encodeURIComponent(address)}`);
+        if (cancelled) return;
+        clearAuthIntent();
+        setRoleModalOpen(false);
+        router.push(res.ok ? "/dashboard" : "/dashboard/onboarding");
+      } catch {
+        if (cancelled) return;
+        clearAuthIntent();
+        setRoleModalOpen(false);
+        router.push("/dashboard/onboarding");
+      }
+    }
+
+    routeCreator();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, authenticated, isLanding, pathname, ready, router]);
 
   useEffect(() => {
     if (variant !== "sidebar" || !address) {
@@ -110,14 +147,6 @@ export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletA
       cancelled = true;
     };
   }, [variant, address]);
-
-  const isSidebar = variant === "sidebar";
-  const isLanding = variant === "landing";
-  const wrapperClass = isSidebar
-    ? "p-3"
-    : isLanding
-      ? ""
-      : "absolute top-4 right-4";
 
   const copyAddress = useCallback(() => {
     if (!address) return;
@@ -186,28 +215,103 @@ export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletA
   }
 
   if (!authenticated) {
+    function handleUnauthenticatedClick() {
+      if (isLanding) {
+        setRoleModalOpen(true);
+        return;
+      }
+
+      clearAuthIntent();
+      login();
+    }
+
+    function handleRoleSelect(role: AuthIntentRole) {
+      if (role === "creator") {
+        setRoleModalOpen(false);
+        setCreatorAccessError(null);
+        setCreatorAccessOpen(true);
+        return;
+      }
+
+      setAuthIntent(role);
+      setRoleModalOpen(false);
+      login();
+    }
+
+    async function handleCreatorAccessSubmit(code: string) {
+      setCreatorAccessLoading(true);
+      setCreatorAccessError(null);
+
+      try {
+        const res = await fetch("/api/auth/creator-access", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ code }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          setCreatorAccessError(
+            typeof data?.error === "string"
+              ? data.error
+              : "Could not verify your creator access code."
+          );
+          return;
+        }
+
+        setAuthIntent("creator");
+        setCreatorAccessCode("");
+        setCreatorAccessOpen(false);
+        login();
+      } catch {
+        setCreatorAccessError("Network error. Please try again.");
+      } finally {
+        setCreatorAccessLoading(false);
+      }
+    }
+
     return (
-      <div className={wrapperClass}>
-        <button
-          type="button"
-          onClick={() => {
-            if (isLanding) {
-              setPendingProfileRedirect(true);
+      <>
+        <div className={wrapperClass}>
+          <button
+            type="button"
+            onClick={handleUnauthenticatedClick}
+            className={
+              isLanding
+                ? "min-h-10 px-5 py-2.5 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-white/30 focus:ring-offset-2 focus:ring-offset-black hover:opacity-90"
+                : isSidebar
+                  ? "w-full min-h-10 px-4 py-2 rounded-lg font-medium hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-white/30"
+                  : "w-full min-h-10 px-4 py-2 rounded-lg bg-gray-100 border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
             }
-            login();
+            style={isLanding || isSidebar ? { backgroundColor: "#ffd28e", color: "#000" } : undefined}
+          >
+            {unauthenticatedLabel ?? "Connect Wallet"}
+          </button>
+        </div>
+
+        <AuthRoleModal
+          open={roleModalOpen}
+          onClose={() => setRoleModalOpen(false)}
+          onSelectRole={handleRoleSelect}
+        />
+
+        <CreatorAccessCodeModal
+          open={creatorAccessOpen}
+          code={creatorAccessCode}
+          loading={creatorAccessLoading}
+          error={creatorAccessError}
+          onClose={() => {
+            if (creatorAccessLoading) return;
+            setCreatorAccessOpen(false);
+            setCreatorAccessCode("");
+            setCreatorAccessError(null);
           }}
-          className={
-            isLanding
-              ? "px-5 py-2.5 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-white/30 focus:ring-offset-2 focus:ring-offset-black hover:opacity-90"
-              : isSidebar
-                ? "w-full px-4 py-2 rounded-lg font-medium hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-white/30"
-                : "w-full px-4 py-2 rounded-lg bg-gray-100 border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
-          }
-          style={isLanding || isSidebar ? { backgroundColor: "#ffd28e", color: "#000" } : undefined}
-        >
-          {unauthenticatedLabel ?? "Connect Wallet"}
-        </button>
-      </div>
+          onCodeChange={setCreatorAccessCode}
+          onSubmit={handleCreatorAccessSubmit}
+        />
+      </>
     );
   }
 

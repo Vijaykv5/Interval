@@ -27,7 +27,7 @@ function getCardTransform(i: number, total: number) {
   const offsetX = distFromCenter * 240;
   const translateY = Math.abs(distFromCenter) * 6;
   const scale = 1 - Math.abs(distFromCenter) * 0.035;
-  const zIndex = i === centerI ? 20 : 10 + i;
+  const zIndex = i === centerI ? 5 : 1 + i;
   return { rotation, offsetX, translateY, scale, zIndex };
 }
 
@@ -71,7 +71,7 @@ export default function Home() {
         </section>
 
         {/* Bottom: 5 fanned cards — hidden on mobile, visible from md up; desktop unchanged */}
-        <section className="relative z-10 hidden md:flex w-full justify-center items-end px-1 sm:px-2 pb-0 min-h-0 overflow-hidden shrink-0 mt-auto">
+        <section className="relative z-0 hidden md:flex w-full justify-center items-end px-1 sm:px-2 pb-0 min-h-0 overflow-hidden shrink-0 mt-auto">
           <div className="relative w-full max-w-[100vw] h-[420px] sm:h-[520px] flex justify-center items-end overflow-hidden" style={{ minWidth: "100%" }}>
             {CREATOR_CARD_TEMPLATES.map((card, i) => {
               const total = CREATOR_CARD_TEMPLATES.length;
@@ -81,7 +81,7 @@ export default function Home() {
               return (
                 <div
                   key={`${card.src}-${i}`}
-                  className="absolute group cursor-default hover:z-50"
+                  className="absolute group cursor-default hover:z-10"
                   style={{
                     left: "50%",
                     bottom: 0,
@@ -129,7 +129,7 @@ export default function Home() {
           </div>
         </section>
 
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-44 bg-gradient-to-b from-transparent via-black/50 to-black" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-44 bg-gradient-to-b from-transparent via-black/50 to-black" />
       </div>
 
       <section className="relative min-h-screen bg-black px-4 py-20 sm:px-6 lg:px-8 lg:py-28">

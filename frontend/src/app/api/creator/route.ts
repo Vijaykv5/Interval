@@ -1,5 +1,6 @@
+import { CREATOR_ACCESS_WALLET_COOKIE } from "@/lib/creator-access";
 import { prisma } from "@/lib/prisma";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: Request) {
   try {
@@ -41,7 +42,7 @@ function trimOptional(str: unknown): string | null {
   return t.length > 0 ? t : null;
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
@@ -68,6 +69,14 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "username is required" },
         { status: 400 }
+      );
+    }
+
+    const grantedWallet = req.cookies.get(CREATOR_ACCESS_WALLET_COOKIE)?.value?.trim();
+    if (grantedWallet !== wallet.trim()) {
+      return NextResponse.json(
+        { error: "Creator access has not been approved for this wallet" },
+        { status: 403 }
       );
     }
 
