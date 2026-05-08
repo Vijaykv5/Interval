@@ -126,6 +126,8 @@ export async function POST(req: Request) {
 
     if (existingCreatorProfile) {
       return NextResponse.json({
+        alreadyOnchain: true,
+        prepared: false,
         created: false,
         funded: false,
         signature: null,
@@ -157,6 +159,7 @@ export async function POST(req: Request) {
     tx.partialSign(admin);
 
     return NextResponse.json({
+      alreadyOnchain: false,
       prepared: true,
       created: false,
       funded: false,

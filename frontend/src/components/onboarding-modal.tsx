@@ -87,6 +87,18 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
     }
 
     if (!sponsoredData?.transaction || typeof sponsoredData.transaction !== "string") {
+      if (sponsoredData?.alreadyOnchain) {
+        const pusdResult = await ensurePusdTokenAccount({
+          wallet: solanaWallet,
+          walletAddress,
+          signAndSendTransaction,
+        });
+        if (pusdResult.created) {
+          notifyTx("success", "PUSD token account created.", pusdResult.signature);
+        }
+        return;
+      }
+
       throw new Error("Sponsored onboarding did not return a transaction to sign.");
     }
 

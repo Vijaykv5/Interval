@@ -522,36 +522,40 @@ export default function Dashboard() {
         }
 
         if (!sponsoredData?.transaction || typeof sponsoredData.transaction !== "string") {
-          throw new Error("Sponsored onboarding did not return a transaction to sign.");
-        }
+          if (sponsoredData?.alreadyOnchain) {
+            toast.success("Creator profile is already registered on-chain.");
+          } else {
+            throw new Error("Sponsored onboarding did not return a transaction to sign.");
+          }
+        } else {
+          const signedResult = await signAndSendTransaction({
+            transaction: Uint8Array.from(Buffer.from(sponsoredData.transaction, "base64")),
+            wallet: solanaWallet,
+            chain: SOLANA_WALLET_CHAIN,
+          });
+          const signature = signatureToString(signedResult.signature);
+          if (!signature) {
+            throw new Error("Sponsored onboarding was submitted, but no signature was returned.");
+          }
 
-        const signedResult = await signAndSendTransaction({
-          transaction: Uint8Array.from(Buffer.from(sponsoredData.transaction, "base64")),
-          wallet: solanaWallet,
-          chain: SOLANA_WALLET_CHAIN,
-        });
-        const signature = signatureToString(signedResult.signature);
-        if (!signature) {
-          throw new Error("Sponsored onboarding was submitted, but no signature was returned.");
-        }
+          const confirmRes = await fetch("/api/solana/confirm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              signature,
+              blockhash: sponsoredData.blockhash,
+              lastValidBlockHeight: sponsoredData.lastValidBlockHeight,
+            }),
+          });
+          if (!confirmRes.ok) {
+            const confirmData = await confirmRes.json().catch(() => ({}));
+            throw new Error(
+              confirmData?.error ?? "Sponsored onboarding transaction failed to confirm."
+            );
+          }
 
-        const confirmRes = await fetch("/api/solana/confirm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            signature,
-            blockhash: sponsoredData.blockhash,
-            lastValidBlockHeight: sponsoredData.lastValidBlockHeight,
-          }),
-        });
-        if (!confirmRes.ok) {
-          const confirmData = await confirmRes.json().catch(() => ({}));
-          throw new Error(
-            confirmData?.error ?? "Sponsored onboarding transaction failed to confirm."
-          );
+          toast.success("Creator profile registered on-chain.");
         }
-
-        toast.success("Creator profile registered on-chain.");
       }
     } catch (err) {
       const message =
