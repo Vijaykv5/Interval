@@ -4,7 +4,12 @@ export type SolanaNetwork = "devnet" | "mainnet-beta";
 export type SolanaWalletChain = "solana:devnet" | "solana:mainnet";
 
 function parseSolanaNetwork(value: string | undefined): SolanaNetwork {
-  return value === "mainnet-beta" ? "mainnet-beta" : "devnet";
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "mainnet" || normalized === "mainnet-beta") {
+    return "mainnet-beta";
+  }
+
+  return "devnet";
 }
 
 export const SOLANA_NETWORK: SolanaNetwork = parseSolanaNetwork(

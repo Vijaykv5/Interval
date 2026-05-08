@@ -226,6 +226,13 @@ export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletA
     }
 
     function handleRoleSelect(role: AuthIntentRole) {
+      if (isLanding) {
+        clearAuthIntent();
+        setRoleModalOpen(false);
+        router.push("/explore");
+        return;
+      }
+
       if (role === "creator") {
         setRoleModalOpen(false);
         setCreatorAccessError(null);
@@ -439,11 +446,11 @@ export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletA
         onClick={() => setDropdownOpen((o) => !o)}
         className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-white/30 focus:ring-offset-2 focus:ring-offset-black ${
           isLanding || isSidebar
-            ? "bg-[#1a1a1a] text-white border border-white/10 hover:bg-white/10"
+            ? "bg-[#171717]/95 text-white border border-white/12 hover:border-[#ffd28e]/22 hover:bg-[#1d1d1d]"
             : "bg-gray-800 text-gray-100 border border-gray-600 hover:bg-gray-700"
         }`}
       >
-        <span className="max-w-[160px] truncate">{getGmailDisplayName(user)}</span>
+        <span className="max-w-[160px] truncate text-white/92">{getGmailDisplayName(user)}</span>
         <ChevronDownIcon open={dropdownOpen} />
       </button>
       {dropdownOpen && (

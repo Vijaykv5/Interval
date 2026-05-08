@@ -4,6 +4,7 @@ import { useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
 import { toast } from "sonner";
+import { setAuthIntent } from "@/lib/auth-intent";
 import { formatPaymentAmount, payForSlot, type Currency } from "@/lib/payments";
 
 type SlotBookingButtonProps = {
@@ -38,6 +39,10 @@ export function SlotBookingButton({
 
     if (!ready) return;
     if (!authenticated) {
+      const msg = "Sign in to book this slot.";
+      setError(msg);
+      toast.error(msg);
+      setAuthIntent("user");
       login();
       return;
     }
