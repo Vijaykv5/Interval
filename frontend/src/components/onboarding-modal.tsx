@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import bs58 from "bs58";
 import { toast } from "sonner";
 import {
@@ -27,6 +27,15 @@ type OnboardingModalProps = {
   closable?: boolean;
 };
 
+type Creator = {
+  id: string;
+  username: string;
+  wallet: string;
+  profileImageUrl: string | null;
+  bio: string | null;
+  xAccount: string | null;
+};
+
 function signatureToString(signature: string | Uint8Array | undefined) {
   if (!signature) return "";
   return typeof signature === "string" ? signature : bs58.encode(signature);
@@ -40,6 +49,8 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
   const [profileImageUrl, setProfileImageUrl] = useState("");
   const [xAccount, setXAccount] = useState("");
   const [bio, setBio] = useState("");
+  const [creator, setCreator] = useState<Creator | null>(null);
+  const [checkingExistingProfile, setCheckingExistingProfile] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [initializingPlatform, setInitializingPlatform] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +58,50 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
   const configuredAdminWallet = getIntervalPlatformAdminWallet();
   const walletCanInitializePlatform = canInitializeIntervalPlatform(walletAddress);
   const platformMissingError = error?.includes("Interval platform is not initialized on-chain.") ?? false;
+
+  useEffect(() => {
+    if (!open || !walletAddress) {
+      setCheckingExistingProfile(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchCreator() {
+      setCheckingExistingProfile(true);
+      try {
+        const res = await fetch(`/api/creator?wallet=${encodeURIComponent(walletAddress)}`);
+        if (!res.ok) {
+          if (!cancelled) {
+            setCreator(null);
+          }
+          return;
+        }
+
+        const data = await res.json();
+        if (cancelled) return;
+        setCreator(data);
+        setUsername(data.username ?? "");
+        setProfileImageUrl(data.profileImageUrl ?? "");
+        setXAccount(data.xAccount ?? "");
+        setBio(data.bio ?? "");
+        onSuccess();
+      } catch {
+        if (!cancelled) {
+          setCreator(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingExistingProfile(false);
+        }
+      }
+    }
+
+    fetchCreator();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, walletAddress, onSuccess]);
 
   function txDescription(signature: string) {
     const url = getExplorerTransactionUrl(signature);
@@ -164,6 +219,7 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
   }
 
   async function validateCreatorPayload() {
+    if (creator) return;
     const res = await fetch("/api/creator", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -180,14 +236,15 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
 
   async function saveCreatorProfile() {
     const res = await fetch("/api/creator", {
-      method: "POST",
+      method: creator ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(getCreatorPayload()),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(data?.error ?? "Failed to create profile");
+      throw new Error(data?.error ?? (creator ? "Failed to update profile" : "Failed to create profile"));
     }
+    setCreator(data);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -224,6 +281,10 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (!open || checkingExistingProfile) {
+    return null;
   }
 
   async function handleInitializePlatform() {

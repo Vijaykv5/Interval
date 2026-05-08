@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useExportWallet, useWallets } from "@privy-io/react-auth/solana";
 
@@ -53,6 +54,8 @@ type WalletAuthProps = {
 };
 
 export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletAuthProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const { ready, authenticated, login, logout, getAccessToken, user } = usePrivy();
   const { wallets } = useWallets();
   const { exportWallet } = useExportWallet();
@@ -63,6 +66,7 @@ export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletA
   const [copied, setCopied] = useState<"address" | "recovery" | null>(null);
   const [creatorProfileImageUrl, setCreatorProfileImageUrl] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [pendingProfileRedirect, setPendingProfileRedirect] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const solanaWallet = wallets[0];
@@ -78,6 +82,14 @@ export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletA
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownOpen]);
+
+  useEffect(() => {
+    if (!pendingProfileRedirect || !ready || !authenticated) return;
+    setPendingProfileRedirect(false);
+    if (pathname !== "/profile") {
+      router.push("/profile");
+    }
+  }, [authenticated, pathname, pendingProfileRedirect, ready, router]);
 
   useEffect(() => {
     if (variant !== "sidebar" || !address) {
@@ -178,7 +190,12 @@ export function WalletAuth({ variant = "header", unauthenticatedLabel }: WalletA
       <div className={wrapperClass}>
         <button
           type="button"
-          onClick={login}
+          onClick={() => {
+            if (isLanding) {
+              setPendingProfileRedirect(true);
+            }
+            login();
+          }}
           className={
             isLanding
               ? "px-5 py-2.5 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-white/30 focus:ring-offset-2 focus:ring-offset-black hover:opacity-90"

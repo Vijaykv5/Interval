@@ -77,6 +77,9 @@ export async function POST(req: Request) {
       where: { wallet },
     });
     if (existingByWallet) {
+      if (validateOnly) {
+        return NextResponse.json({ ok: true, existing: true, creator: existingByWallet });
+      }
       return NextResponse.json(
         { error: "A profile already exists for this wallet" },
         { status: 400 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import bs58 from "bs58";
@@ -17,6 +17,8 @@ import {
   getIntervalPlatformAdminWallet,
   initializeIntervalPlatform,
   isIntervalPlatformInitialized,
+  IntervalTransactionError,
+  releaseBookingFunds,
 } from "@/lib/interval-program";
 import { SOLANA_WALLET_CHAIN } from "@/lib/solana-config";
 import {
@@ -117,6 +119,34 @@ function formatAmount(amount: number, currency: "SOL" | "PUSD") {
   return `${Number(amount).toFixed(currency === "SOL" ? 4 : 2)} ${currency}`;
 }
 
+const CLAIM_DELAY_MS = 5 * 60 * 1000;
+const AUTO_RELEASE_DELAY_MS = 4 * 60 * 60 * 1000;
+
+function isSolEscrowBooking(booking: Booking) {
+  return booking.currency === "SOL";
+}
+
+function canClaimBooking(booking: Booking) {
+  if (!isSolEscrowBooking(booking) || booking.status === "released") return false;
+  return Date.now() >= new Date(booking.slot.endTime).getTime() + CLAIM_DELAY_MS;
+}
+
+function shouldAutoReleaseBooking(booking: Booking) {
+  if (!isSolEscrowBooking(booking) || booking.status === "released") return false;
+  return Date.now() >= new Date(booking.slot.endTime).getTime() + AUTO_RELEASE_DELAY_MS;
+}
+
+function claimAvailabilityLabel(booking: Booking) {
+  if (!isSolEscrowBooking(booking)) return "Paid instantly";
+  if (booking.status === "released") return "Released";
+
+  const claimAt = new Date(booking.slot.endTime).getTime() + CLAIM_DELAY_MS;
+  if (Date.now() >= claimAt) return "Claim available";
+
+  const minutes = Math.max(1, Math.ceil((claimAt - Date.now()) / 60000));
+  return `Claim in ${minutes}m`;
+}
+
 /** Returns YYYY-MM-DD for today (local) */
 function todayLocal(): string {
   const d = new Date();
@@ -175,6 +205,8 @@ export default function Dashboard() {
   const [lpPositionsSummary, setLpPositionsSummary] = useState<LpPositionsSummary>({ count: 0 });
   const [platformInitialized, setPlatformInitialized] = useState<boolean | null>(null);
   const [initializingPlatform, setInitializingPlatform] = useState(false);
+  const [claimingBookingId, setClaimingBookingId] = useState<string | null>(null);
+  const attemptedAutoReleaseIds = useRef<Set<string>>(new Set());
 
   const solanaWallet = wallets[0];
   const walletAddress = solanaWallet?.address ?? null;
@@ -228,6 +260,74 @@ export default function Dashboard() {
       if (showLoading) setLoading(false);
     }
   }, [walletAddress]);
+
+  const claimBookingFunds = useCallback(
+    async (booking: Booking, mode: "manual" | "auto" = "manual") => {
+      if (!solanaWallet || !walletAddress || !creator?.id) {
+        throw new Error("Connect the creator wallet before claiming funds.");
+      }
+
+      if (!isSolEscrowBooking(booking)) {
+        throw new Error("Only SOL escrow bookings can be claimed.");
+      }
+
+      setClaimingBookingId(booking.id);
+
+      try {
+        const result = await releaseBookingFunds({
+          wallet: solanaWallet,
+          signAndSendTransaction,
+          creatorWallet: walletAddress,
+          payerWallet: booking.payerWallet,
+          slotId: booking.slot.id,
+        });
+
+        const releaseRes = await fetch("/api/booking/release", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bookingId: booking.id,
+            wallet: walletAddress,
+            releaseSignature: result.signature,
+          }),
+        });
+        const releaseData = await releaseRes.json().catch(() => ({}));
+        if (!releaseRes.ok) {
+          throw new Error(releaseData?.error ?? "Escrow released on-chain, but booking status failed to update.");
+        }
+
+        toast.success(
+          mode === "auto" ? "Auto-released escrow to your wallet." : "Escrow released to your wallet.",
+          { description: result.signature }
+        );
+
+        if (selectedBooking?.id === booking.id) {
+          setSelectedBooking({
+            ...booking,
+            status: "released",
+          });
+        }
+
+        await refreshDashboard(creator.id);
+      } catch (error) {
+        if (mode === "manual") {
+          toast.error(
+            error instanceof Error ? error.message : "Failed to claim escrow funds.",
+            {
+              description:
+                error instanceof IntervalTransactionError ? error.signature : undefined,
+            }
+          );
+        } else {
+          console.error("Auto release failed:", error);
+        }
+        throw error;
+      } finally {
+        setClaimingBookingId(null);
+      }
+    },
+    [creator, refreshDashboard, selectedBooking, signAndSendTransaction, solanaWallet, walletAddress]
+  );
 
   useEffect(() => {
     if (!walletAddress) {
@@ -370,6 +470,29 @@ export default function Dashboard() {
     };
   }, [creator?.id, walletAddress, refreshDashboard, refreshTreasuryBalances, refreshLpPositionsSummary]);
 
+  useEffect(() => {
+    if (!creator || !dashboard?.bookings?.length || !solanaWallet || !walletAddress) return;
+
+    const eligible = dashboard.bookings.filter((booking) => {
+      if (!shouldAutoReleaseBooking(booking)) return false;
+      if (attemptedAutoReleaseIds.current.has(booking.id)) return false;
+      attemptedAutoReleaseIds.current.add(booking.id);
+      return true;
+    });
+
+    if (!eligible.length) return;
+
+    void (async () => {
+      for (const booking of eligible) {
+        try {
+          await claimBookingFunds(booking, "auto");
+        } catch {
+          // Manual claim remains available if auto-attempt fails.
+        }
+      }
+    })();
+  }, [claimBookingFunds, creator, dashboard?.bookings, solanaWallet, walletAddress]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setCreateError(null);
@@ -465,6 +588,8 @@ export default function Dashboard() {
   const meetings = dashboard?.upcomingMeetings ?? [];
   const mySlots = dashboard?.mySlots ?? [];
   const bookings = dashboard?.bookings ?? [];
+  const upcomingSlots = mySlots.filter((slot) => new Date(slot.endTime).getTime() >= Date.now());
+  const previousSlots = mySlots.filter((slot) => new Date(slot.endTime).getTime() < Date.now());
   const earnings = dashboard?.earnings ?? 0;
   const earningsByCurrency = dashboard?.earningsByCurrency ?? { SOL: earnings, PUSD: 0 };
   const totalBookings = dashboard?.totalBookings ?? 0;
@@ -870,56 +995,107 @@ export default function Dashboard() {
               <div className="space-y-8">
                 <div>
                   <h2 className="text-2xl font-bold text-white tracking-tight">My slots</h2>
-                  <p className="text-sm text-white/50 mt-1">Slots you created; share the blink link to get booked</p>
+                  <p className="text-sm text-white/50 mt-1">Slots you created, separated into upcoming and previous sessions</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm overflow-hidden">
-                  {mySlots.length === 0 ? (
+                {mySlots.length === 0 ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm overflow-hidden">
                     <div className="p-12 text-center text-white/50">
                       <p className="font-medium text-white/80">No slots yet</p>
                       <p className="text-sm mt-1">Create a slot to get a Solana blink link for booking.</p>
                       <Link href="/dashboard?section=create" className="inline-block mt-4 px-4 py-2 rounded-xl text-sm font-medium text-black" style={{ backgroundColor: "#ffd28e" }}>Create slot</Link>
                     </div>
-                  ) : (
-                    <ul className="divide-y divide-white/10">
-                      {mySlots.map((slot) => (
-                        <li key={slot.id} className="p-4 sm:p-6 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-4">
-                          <div className="min-w-0">
-                            <p className="font-medium text-white">{formatMeetingDate(slot.startTime)}</p>
-                            <p className="text-sm text-white/60">
-                              {formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)} · <span style={{ color: "#ffd28e" }}>{formatAmount(slot.price, slot.currency)}</span>
-                            </p>
-                            {slot.meetLink && (
-                              <a href={slot.meetLink} target="_blank" rel="noopener noreferrer" className="text-sm mt-1 inline-block hover:opacity-90" style={{ color: "#ffd28e" }}>
-                                Join meeting →
-                              </a>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-3">
-                            {slot.status === "available" ? (
-                              <>
-                                <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90">Available</span>
-                                <a
-                                  href={dialBlinkUrl(slot.id)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm font-medium text-white/80 hover:text-white underline"
-                                  style={{ color: "#ffd28e" }}
-                                >
-                                  Open blink to book →
-                                </a>
-                                <button type="button" onClick={() => copyBlink(slot.id)} className="text-sm font-medium text-white/60 hover:text-white underline">
-                                  Copy link
-                                </button>
-                              </>
-                            ) : (
-                              <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90">Booked</span>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm overflow-hidden">
+                      <div className="border-b border-white/10 px-5 py-4">
+                        <h3 className="text-base font-semibold text-white">Upcoming slots</h3>
+                        <p className="mt-1 text-sm text-white/45">Future or currently active slots you can still manage</p>
+                      </div>
+                      {upcomingSlots.length === 0 ? (
+                        <div className="p-8 text-center text-white/50">
+                          <p className="font-medium text-white/80">No upcoming slots</p>
+                          <p className="text-sm mt-1">Create a new slot to start taking bookings.</p>
+                        </div>
+                      ) : (
+                        <ul className="divide-y divide-white/10">
+                          {upcomingSlots.map((slot) => (
+                            <li key={slot.id} className="p-4 sm:p-6 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-4">
+                              <div className="min-w-0">
+                                <p className="font-medium text-white">{formatMeetingDate(slot.startTime)}</p>
+                                <p className="text-sm text-white/60">
+                                  {formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)} · <span style={{ color: "#ffd28e" }}>{formatAmount(slot.price, slot.currency)}</span>
+                                </p>
+                                {slot.meetLink && (
+                                  <a href={slot.meetLink} target="_blank" rel="noopener noreferrer" className="text-sm mt-1 inline-block hover:opacity-90" style={{ color: "#ffd28e" }}>
+                                    Join meeting →
+                                  </a>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-3">
+                                {slot.status === "available" ? (
+                                  <>
+                                    <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90">Available</span>
+                                    <a
+                                      href={dialBlinkUrl(slot.id)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-sm font-medium text-white/80 hover:text-white underline"
+                                      style={{ color: "#ffd28e" }}
+                                    >
+                                      Open blink to book →
+                                    </a>
+                                    <button type="button" onClick={() => copyBlink(slot.id)} className="text-sm font-medium text-white/60 hover:text-white underline">
+                                      Copy link
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90">Booked</span>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm overflow-hidden">
+                      <div className="border-b border-white/10 px-5 py-4">
+                        <h3 className="text-base font-semibold text-white">Previous slots</h3>
+                        <p className="mt-1 text-sm text-white/45">Past meetings and completed slot history</p>
+                      </div>
+                      {previousSlots.length === 0 ? (
+                        <div className="p-8 text-center text-white/50">
+                          <p className="font-medium text-white/80">No previous slots yet</p>
+                          <p className="text-sm mt-1">Completed sessions will appear here after they end.</p>
+                        </div>
+                      ) : (
+                        <ul className="divide-y divide-white/10">
+                          {previousSlots.map((slot) => (
+                            <li key={slot.id} className="p-4 sm:p-6 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-4">
+                              <div className="min-w-0">
+                                <p className="font-medium text-white">{formatMeetingDate(slot.startTime)}</p>
+                                <p className="text-sm text-white/60">
+                                  {formatMeetingTime(slot.startTime)} – {formatMeetingTime(slot.endTime)} · <span style={{ color: "#ffd28e" }}>{formatAmount(slot.price, slot.currency)}</span>
+                                </p>
+                                {slot.meetLink && (
+                                  <a href={slot.meetLink} target="_blank" rel="noopener noreferrer" className="text-sm mt-1 inline-block hover:opacity-90" style={{ color: "#ffd28e" }}>
+                                    Join meeting →
+                                  </a>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-3">
+                                <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90">
+                                  {slot.status === "booked" ? "Completed" : "Ended"}
+                                </span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -950,7 +1126,27 @@ export default function Dashboard() {
                             <p className="font-medium text-white">{formatMeetingDate(b.slot.startTime)}</p>
                             <p className="text-sm" style={{ color: "#ffd28e" }}>{formatAmount(b.amount, b.currency)}</p>
                           </div>
-                          <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90">{b.status}</span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90">{b.status}</span>
+                            {isSolEscrowBooking(b) && (
+                              <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs font-medium text-white/70">
+                                {claimAvailabilityLabel(b)}
+                              </span>
+                            )}
+                            {canClaimBooking(b) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void claimBookingFunds(b);
+                                }}
+                                disabled={claimingBookingId === b.id}
+                                className="inline-flex min-h-10 items-center justify-center rounded-full border border-white/12 bg-white px-3.5 py-2 text-xs font-semibold text-black transition-colors hover:bg-white/90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305]"
+                              >
+                                {claimingBookingId === b.id ? "Claiming..." : "Claim funds"}
+                              </button>
+                            )}
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -991,9 +1187,29 @@ export default function Dashboard() {
                       <p className="text-white">{formatMeetingDate(selectedBooking.slot.startTime)} · <span style={{ color: "#ffd28e" }}>{formatAmount(selectedBooking.amount, selectedBooking.currency)}</span></p>
                     </div>
                     <div>
+                      <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-1">Release status</p>
+                      <p className="text-white/90">{claimAvailabilityLabel(selectedBooking)}</p>
+                      {isSolEscrowBooking(selectedBooking) && selectedBooking.status !== "released" && (
+                        <p className="mt-1 text-xs text-white/50">
+                          Claim opens 5 minutes after meeting end. After 4 hours, the dashboard auto-attempts release when you return with the creator wallet connected.
+                        </p>
+                      )}
+                    </div>
+                    <div>
                       <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-1">Slot</p>
                       <p className="text-white/90">{formatMeetingTime(selectedBooking.slot.startTime)} – {formatMeetingTime(selectedBooking.slot.endTime)}</p>
                     </div>
+                    {canClaimBooking(selectedBooking) && (
+                      <button
+                        type="button"
+                        onClick={() => void claimBookingFunds(selectedBooking)}
+                        disabled={claimingBookingId === selectedBooking.id}
+                        className="inline-flex min-h-10 items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-black hover:opacity-90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0d0f]"
+                        style={{ backgroundColor: "#ffd28e" }}
+                      >
+                        {claimingBookingId === selectedBooking.id ? "Claiming..." : "Claim funds"}
+                      </button>
+                    )}
                     {selectedBooking.slot.meetLink && (
                       <a
                         href={selectedBooking.slot.meetLink}

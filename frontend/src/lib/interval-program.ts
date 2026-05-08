@@ -14,6 +14,7 @@ const INITIALIZE_TREASURY_DISCRIMINATOR = Uint8Array.from([124, 186, 211, 195, 8
 const REGISTER_CREATOR_DISCRIMINATOR = Uint8Array.from([85, 3, 194, 210, 164, 140, 160, 195]);
 const ONBOARD_CREATOR_DISCRIMINATOR = Uint8Array.from([226, 92, 121, 226, 126, 161, 140, 30]);
 const BOOK_SLOT_DISCRIMINATOR = Uint8Array.from([233, 227, 65, 37, 70, 197, 216, 39]);
+const RELEASE_FUNDS_DISCRIMINATOR = Uint8Array.from([225, 88, 91, 108, 126, 52, 2, 26]);
 type SignAndSendTransaction = (args: {
   transaction: Uint8Array;
   wallet: ConnectedStandardSolanaWallet;
@@ -532,6 +533,100 @@ export async function payForSlotWithIntervalEscrow({
     signAndSendTransaction,
     transaction,
     feePayer: new PublicKey(payerWallet),
+  });
+
+  return {
+    signature,
+    bookingEscrow: bookingEscrow.toBase58(),
+    bookingId: bookingIdToHex(await deriveBookingId(slotId, payerWallet)),
+  };
+}
+
+export async function buildReleaseFundsInstruction({
+  slotId,
+  payerWallet,
+  creatorWallet,
+}: {
+  slotId: string;
+  payerWallet: string;
+  creatorWallet: string;
+}) {
+  const platform = await assertPlatformInitialized();
+  const authority = new PublicKey(creatorWallet);
+  const buyer = new PublicKey(payerWallet);
+  const creatorProfile = findCreatorProfilePda(authority);
+  const creatorProfileAccount = await getReadConnection().getAccountInfo(
+    creatorProfile,
+    "confirmed"
+  );
+
+  if (!creatorProfileAccount) {
+    throw new Error("This creator is not registered on-chain yet.");
+  }
+
+  const bookingId = await deriveBookingId(slotId, payerWallet);
+  const bookingEscrow = findBookingEscrowPda(bookingId);
+  const bookingEscrowAccount = await getReadConnection().getAccountInfo(
+    bookingEscrow,
+    "confirmed"
+  );
+
+  if (!bookingEscrowAccount) {
+    throw new Error("Booking escrow was not found on-chain for this slot.");
+  }
+
+  return {
+    bookingId,
+    bookingEscrow,
+    instruction: new TransactionInstruction({
+      programId: INTERVAL_PROGRAM_ID,
+      keys: [
+        { pubkey: platform, isSigner: false, isWritable: false },
+        { pubkey: creatorProfile, isSigner: false, isWritable: false },
+        { pubkey: bookingEscrow, isSigner: false, isWritable: true },
+        { pubkey: authority, isSigner: true, isWritable: true },
+        { pubkey: buyer, isSigner: false, isWritable: true },
+      ],
+      data: Buffer.from(RELEASE_FUNDS_DISCRIMINATOR),
+    }),
+  };
+}
+
+export async function releaseBookingFunds({
+  wallet,
+  signAndSendTransaction,
+  creatorWallet,
+  payerWallet,
+  slotId,
+}: {
+  wallet: ConnectedStandardSolanaWallet;
+  signAndSendTransaction: SignAndSendTransaction;
+  creatorWallet: string;
+  payerWallet: string;
+  slotId: string;
+}) {
+  if (!creatorWallet) {
+    throw new Error("Connect the creator wallet before claiming funds.");
+  }
+
+  if (wallet.address !== creatorWallet) {
+    throw new Error("Connect with the creator wallet to claim escrow funds.");
+  }
+
+  const { bookingEscrow, instruction } = await buildReleaseFundsInstruction({
+    slotId,
+    payerWallet,
+    creatorWallet,
+  });
+
+  const transaction = new Transaction();
+  transaction.add(instruction);
+
+  const signature = await sendAndConfirmTransaction({
+    wallet,
+    signAndSendTransaction,
+    transaction,
+    feePayer: new PublicKey(creatorWallet),
   });
 
   return {
