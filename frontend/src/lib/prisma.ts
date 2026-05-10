@@ -17,28 +17,31 @@ function createPrismaClient() {
     globalForPrisma.prismaPool ??
     new Pool({
       connectionString,
-      max: process.env.NODE_ENV === "production" ? 10 : 5,
-      idleTimeoutMillis: 30_000,
+      max: 3,
+      idleTimeoutMillis: 20_000,
       connectionTimeoutMillis: 10_000,
       keepAlive: true,
     });
 
-  pool.on("error", (error: unknown) => {
-    console.error("Postgres pool error:", error);
-  });
-
   globalForPrisma.prismaPool = pool;
 
-  const adapter = new PrismaPg(pool, {
-    onPoolError: (error: unknown) => {
-      console.error("Prisma Postgres adapter error:", error);
-    },
+  const adapter = new PrismaPg(pool);
+
+  return new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
-  return new PrismaClient({ adapter });
+}
+
+function hasExpectedModels(client: PrismaClient | undefined) {
+  if (!client) return false;
+  return "kiraPayment" in (client as object);
 }
 
 export const prisma =
-  globalForPrisma.prisma ?? createPrismaClient();
+  hasExpectedModels(globalForPrisma.prisma)
+    ? globalForPrisma.prisma!
+    : createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;

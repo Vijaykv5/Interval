@@ -31,15 +31,28 @@ function formatSlotTime(iso: Date) {
 }
 
 async function getCreatorByUsername(username: string) {
-  return prisma.creator.findUnique({
+  const now = new Date();
+  const creator = await prisma.creator.findUnique({
     where: { username },
-    include: {
-      slots: {
-        where: { status: "available" },
-        orderBy: { startTime: "asc" },
-      },
-    },
   });
+
+  if (!creator) {
+    return null;
+  }
+
+  const availableSlots = await prisma.slot.findMany({
+    where: {
+      creatorId: creator.id,
+      status: "available",
+      startTime: { gt: now },
+    },
+    orderBy: { startTime: "asc" },
+  });
+
+  return {
+    ...creator,
+    slots: availableSlots,
+  };
 }
 
 async function getBaseUrl() {

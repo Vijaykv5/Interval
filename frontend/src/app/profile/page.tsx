@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { usePrivy } from "@privy-io/react-auth";
 import { useSignAndSendTransaction, useExportWallet, useWallets } from "@privy-io/react-auth/solana";
 import { LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { useSolanaNetwork } from "@/components/network-provider";
 import { SiteNav } from "@/components/site-nav";
-import { getSelectedSolanaWalletChain } from "@/lib/solana-config";
+import { ensurePusdTokenAccount } from "@/lib/pusd";
+import { getSelectedSolanaWalletChain, hasConfiguredPusdMint } from "@/lib/solana-config";
 
 type BalanceData = {
   wallet: string;
@@ -131,11 +134,17 @@ function bookingPhase(start: string, end: string) {
   return "Upcoming";
 }
 
+function getPusdProvisionSessionKey(network: string, walletAddress: string) {
+  return `interval:profile:pusd-ata:${network}:${walletAddress}`;
+}
+
 export default function ProfilePage() {
+  const searchParams = useSearchParams();
   const { ready, authenticated, login, connectWallet, getAccessToken, user } = usePrivy();
   const { wallets } = useWallets();
   const { signAndSendTransaction } = useSignAndSendTransaction();
   const { exportWallet } = useExportWallet();
+  const { network } = useSolanaNetwork();
   const [balances, setBalances] = useState<BalanceData | null>(null);
   const [bookingSummary, setBookingSummary] = useState<BookingSummaryData | null>(null);
   const [loadingBalances, setLoadingBalances] = useState(false);
@@ -154,6 +163,8 @@ export default function ProfilePage() {
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
   const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [authSettled, setAuthSettled] = useState(false);
+  const pusdProvisionInFlightRef = useRef<string | null>(null);
 
   const wallet = wallets[0];
   const walletAddress = wallet?.address ?? null;
@@ -336,6 +347,103 @@ export default function ProfilePage() {
   const bookings = bookingSummary?.bookings ?? [];
   const bookingCount = bookings.length;
   const rewardsPoints = bookingCount * 25;
+  const bookedNow = searchParams.get("booked") === "1";
+  const selectedBookingId = searchParams.get("booking");
+  const kiraPayError = searchParams.get("kirapay") === "error";
+  const kiraPayMessage = searchParams.get("message");
+  const highlightedBooking = selectedBookingId
+    ? bookings.find((booking) => booking.id === selectedBookingId) ?? null
+    : bookingSummary?.nextBooking ?? null;
+
+  useEffect(() => {
+    if (!bookedNow || !selectedBookingId || !bookingSummary) return;
+    if (!highlightedBooking) return;
+
+    toast.success("Booking saved to your profile.", {
+      description: `You can find your session with @${highlightedBooking.creator.username} below.`,
+    });
+  }, [bookedNow, selectedBookingId, bookingSummary, highlightedBooking]);
+
+  useEffect(() => {
+    if (!kiraPayError) return;
+
+    toast.error(kiraPayMessage || "KIRAPAY checkout did not complete.");
+  }, [kiraPayError, kiraPayMessage]);
+
+  useEffect(() => {
+    if (!ready) {
+      setAuthSettled(false);
+      return;
+    }
+
+    if (authenticated) {
+      setAuthSettled(true);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setAuthSettled(true);
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [authenticated, ready]);
+
+  useEffect(() => {
+    if (!ready || !authenticated) return;
+    if (!hasConfiguredPusdMint(network)) return;
+    if (!wallet || !walletAddress) return;
+
+    const sessionKey = getPusdProvisionSessionKey(network, walletAddress);
+    if (typeof window !== "undefined") {
+      const status = window.sessionStorage.getItem(sessionKey);
+      if (status === "done" || status === "failed") {
+        return;
+      }
+    }
+
+    if (pusdProvisionInFlightRef.current === sessionKey) {
+      return;
+    }
+
+    pusdProvisionInFlightRef.current = sessionKey;
+
+    void ensurePusdTokenAccount({
+      wallet,
+      walletAddress,
+      signAndSendTransaction,
+      network,
+    })
+      .then(async (result) => {
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(sessionKey, "done");
+        }
+
+        if (result.created) {
+          await loadBalances();
+        }
+      })
+      .catch((error) => {
+        console.error("Automatic PUSD token account setup on profile failed:", error);
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(sessionKey, "failed");
+        }
+      })
+      .finally(() => {
+        if (pusdProvisionInFlightRef.current === sessionKey) {
+          pusdProvisionInFlightRef.current = null;
+        }
+      });
+  }, [
+    authenticated,
+    loadBalances,
+    network,
+    ready,
+    signAndSendTransaction,
+    wallet,
+    walletAddress,
+  ]);
 
   return (
     <div className="min-h-screen bg-[#060606] text-white">
@@ -348,7 +456,7 @@ export default function ProfilePage() {
       />
       <SiteNav />
       <main className="relative mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 py-6 sm:px-6 sm:py-10">
-        {!ready ? (
+        {!ready || !authSettled ? (
           <section className="rounded-[2rem] border border-white/10 bg-[#161616] p-6">
             <div className="h-36 animate-pulse rounded-[1.5rem] bg-white/8" />
             <div className="mt-6 h-10 w-48 animate-pulse rounded-full bg-white/8" />
@@ -531,12 +639,79 @@ export default function ProfilePage() {
                       />
                     ) : (
                       <div className="grid gap-3">
+                        {highlightedBooking && (
+                          <section className="rounded-[1.75rem] border border-[#ffd28e]/20 bg-[linear-gradient(180deg,rgba(255,210,142,0.08),rgba(20,20,20,0.94))] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.2)]">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#ffd28e]/72">
+                                  {bookedNow ? "Booking confirmed" : "Next session"}
+                                </p>
+                                <h3 className="mt-3 text-2xl font-semibold text-white">
+                                  @{highlightedBooking.creator.username}
+                                </h3>
+                                <p className="mt-2 text-sm text-white/60">
+                                  {formatDateLabel(highlightedBooking.slot.startTime)} ·{" "}
+                                  {formatTimeRange(highlightedBooking.slot.startTime, highlightedBooking.slot.endTime)}
+                                </p>
+                                {highlightedBooking.callFor && (
+                                  <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72">
+                                    {highlightedBooking.callFor}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="grid gap-2 text-sm text-white/64 sm:grid-cols-2 lg:min-w-[320px]">
+                                <DetailPill label="Status" value={highlightedBooking.status} />
+                                <DetailPill
+                                  label="Payment"
+                                  value={formatAmount(highlightedBooking.amount, highlightedBooking.currency)}
+                                />
+                                <DetailPill
+                                  label="Booked on"
+                                  value={formatDateLabel(highlightedBooking.createdAt)}
+                                />
+                                <DetailPill
+                                  label="Phase"
+                                  value={bookingPhase(
+                                    highlightedBooking.slot.startTime,
+                                    highlightedBooking.slot.endTime
+                                  )}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="mt-5 flex flex-wrap gap-3">
+                              <Link
+                                href={`/explore/${highlightedBooking.creator.username}`}
+                                className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#ffd28e] px-5 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-[#ffc97a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#060606]"
+                              >
+                                View creator
+                              </Link>
+                              {highlightedBooking.slot.meetLink ? (
+                                <a
+                                  href={highlightedBooking.slot.meetLink}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#171717] px-5 py-2.5 text-sm font-medium text-white/82 transition-colors hover:bg-[#1f1f1f] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#060606]"
+                                >
+                                  Open meeting link
+                                </a>
+                              ) : null}
+                            </div>
+                          </section>
+                        )}
+
                         {bookings.map((booking) => {
                           const phase = bookingPhase(booking.slot.startTime, booking.slot.endTime);
+                          const isHighlighted = booking.id === highlightedBooking?.id;
                           return (
                             <article
                               key={booking.id}
-                              className="rounded-[1.5rem] bg-[#101010] p-4 transition-colors hover:bg-[#131313]"
+                              className={`rounded-[1.5rem] p-4 transition-colors hover:bg-[#131313] ${
+                                isHighlighted
+                                  ? "border border-[#ffd28e]/25 bg-[#14110b]"
+                                  : "bg-[#101010]"
+                              }`}
                             >
                               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                                 <div className="min-w-0">
@@ -549,6 +724,10 @@ export default function ProfilePage() {
                                   <p className="mt-2 text-sm text-white/58">
                                     {formatDateLabel(booking.slot.startTime)} · {formatTimeRange(booking.slot.startTime, booking.slot.endTime)}
                                   </p>
+                                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/42">
+                                    <span>Status: {booking.status}</span>
+                                    <span>Booked: {formatDateLabel(booking.createdAt)}</span>
+                                  </div>
                                   {booking.callFor && (
                                     <p className="mt-2 line-clamp-2 text-sm text-white/42">
                                       {booking.callFor}
@@ -560,12 +739,24 @@ export default function ProfilePage() {
                                   <p className="text-sm font-semibold text-[#ffd28e]">
                                     {formatAmount(booking.amount, booking.currency)}
                                   </p>
-                                  <Link
-                                    href={`/explore/${booking.creator.username}`}
-                                    className="inline-flex min-h-10 items-center justify-center rounded-full bg-[#171717] px-3.5 py-2 text-sm font-medium text-white/76 transition-colors hover:bg-[#1f1f1f] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#060606]"
-                                  >
-                                    View creator
-                                  </Link>
+                                  <div className="flex flex-wrap gap-2 sm:justify-end">
+                                    {booking.slot.meetLink ? (
+                                      <a
+                                        href={booking.slot.meetLink}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex min-h-10 items-center justify-center rounded-full bg-[#1d1d1d] px-3.5 py-2 text-sm font-medium text-white/76 transition-colors hover:bg-[#242424] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#060606]"
+                                      >
+                                        Join meeting
+                                      </a>
+                                    ) : null}
+                                    <Link
+                                      href={`/explore/${booking.creator.username}`}
+                                      className="inline-flex min-h-10 items-center justify-center rounded-full bg-[#171717] px-3.5 py-2 text-sm font-medium text-white/76 transition-colors hover:bg-[#1f1f1f] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#060606]"
+                                    >
+                                      View creator
+                                    </Link>
+                                  </div>
                                 </div>
                               </div>
                             </article>
@@ -613,7 +804,7 @@ export default function ProfilePage() {
                         {loadingBalances && !balances ? "..." : `${formatTokenAmount(balances?.pusd ?? 0, 2)} PUSD`}
                       </p>
                       <p className="mt-2 text-sm text-white/48">
-                        Your token account will be created automatically when PUSD is deposited.
+                        Your PUSD token account is prepared automatically when needed.
                       </p>
                     </div>
                   </div>
@@ -777,20 +968,17 @@ export default function ProfilePage() {
   );
 }
 
-function MetricCard({
+function DetailPill({
   label,
   value,
-  hint,
 }: {
   label: string;
   value: string;
-  hint: string;
 }) {
   return (
-    <div className="rounded-[1.5rem] bg-[#121212] p-5">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">{label}</p>
-      <p className="mt-3 text-2xl font-semibold text-white">{value}</p>
-      <p className="mt-2 text-sm text-white/48">{hint}</p>
+    <div className="rounded-[1.1rem] border border-white/10 bg-black/20 px-3.5 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">{label}</p>
+      <p className="mt-1 text-sm font-medium text-white/82">{value}</p>
     </div>
   );
 }
@@ -946,25 +1134,6 @@ function InfoCard({
       <p className="mt-3 text-xl font-semibold text-white">{value}</p>
       <p className="mt-2 text-sm text-white/48">{detail}</p>
     </div>
-  );
-}
-
-function RefreshIcon({ spinning }: { spinning: boolean }) {
-  return (
-    <svg
-      className={`h-5 w-5 ${spinning ? "animate-spin" : ""}`}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 12a9 9 0 0 1-14.8 6.9" />
-      <path d="M3 12A9 9 0 0 1 17.8 5.1" />
-      <path d="M18 2v4h-4" />
-      <path d="M6 22v-4h4" />
-    </svg>
   );
 }
 

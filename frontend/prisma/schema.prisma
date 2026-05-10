@@ -56,6 +56,25 @@ model Booking {
   createdAt   DateTime @default(now())
 }
 
+model KiraPayment {
+  id             String   @id @default(uuid())
+  customOrderId  String   @unique
+  slotId         String
+  creatorId      String
+  payerWallet    String
+  receiverWallet String
+  checkoutUrl    String?
+  checkoutCode   String?
+  originalPrice  Int
+  fiatCurrency   String
+  status         String   @default("pending")
+  providerStatus String?
+  bookingId      String?
+  rawPayload     Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 enum Currency {
   SOL
   PUSD

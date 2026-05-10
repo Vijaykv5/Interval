@@ -126,6 +126,26 @@ export async function GET(req: Request) {
       );
     }
 
+    if (new Date(slot.startTime).getTime() <= Date.now()) {
+      const requestUrlPast = new URL(req.url);
+      const baseUrlPast = (
+        process.env.NEXT_PUBLIC_APP_URL ||
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+        requestUrlPast.origin
+      ).trim().replace(/\/$/, "");
+      return Response.json(
+        {
+          type: "action",
+          icon: getActionIcon(slotId, slot, baseUrlPast),
+          title: "Book meeting slot",
+          description: "This slot has already started and can no longer be booked.",
+          label: "Slot expired",
+          disabled: true,
+        } satisfies ActionGetResponse,
+        { headers }
+      );
+    }
+
     const dateTimeOptions: Intl.DateTimeFormatOptions = {
       month: "numeric",
       day: "numeric",
@@ -226,6 +246,13 @@ export async function POST(req: Request) {
     if (!slot || slot.status !== "available") {
       return Response.json(
         { message: "Slot not found or not available" } satisfies ActionError,
+        { status: 400, headers }
+      );
+    }
+
+    if (new Date(slot.startTime).getTime() <= Date.now()) {
+      return Response.json(
+        { message: "This slot has already started and can no longer be booked." } satisfies ActionError,
         { status: 400, headers }
       );
     }

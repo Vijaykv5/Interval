@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { Geist, Geist_Mono, Press_Start_2P, Bebas_Neue } from "next/font/google";
 import localFont from "next/font/local";
 import { Toaster } from "sonner";
 import { BetaBanner } from "@/components/beta-banner";
@@ -8,28 +7,6 @@ import { NetworkProvider } from "@/components/network-provider";
 import { PrivyProviders } from "@/components/privy-providers";
 import { getSelectedSolanaNetwork } from "@/lib/solana-config";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-const pressStart2P = Press_Start_2P({
-  variable: "--font-press-start",
-  weight: "400",
-  subsets: ["latin"],
-});
-
-const bebasNeue = Bebas_Neue({
-  variable: "--font-bebas-neue",
-  weight: "400",
-  subsets: ["latin"],
-});
 
 const archivoCondensed = localFont({
   src: "../../public/fonts/Archivo_Condensed-SemiBold.ttf",
@@ -66,7 +43,16 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${pressStart2P.variable} ${bebasNeue.variable} ${archivoCondensed.variable} ${utendo.variable} antialiased min-h-screen bg-[#030305]`}
+        className={`${archivoCondensed.variable} ${utendo.variable} antialiased min-h-screen bg-[#030305]`}
+        style={
+          {
+            "--font-geist-sans": "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+            "--font-geist-mono":
+              "'SFMono-Regular', 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
+            "--font-press-start": "'Courier New', monospace",
+            "--font-bebas-neue": "Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif",
+          } as React.CSSProperties
+        }
       >
         {/* Ready to Entangle – stacked background layers */}
         <div className="bg-orbit-base" />

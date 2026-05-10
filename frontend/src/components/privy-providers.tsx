@@ -56,7 +56,7 @@ export function PrivyProviders({ children }: { children: ReactNode }) {
         },
         embeddedWallets: {
           solana: {
-            createOnLogin: "all-users",
+            createOnLogin: "users-without-wallets",
           },
         },
         externalWallets: {

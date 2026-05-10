@@ -1,17 +1,13 @@
-import {
-  getAccount,
-  getAssociatedTokenAddress,
-  TokenAccountNotFoundError,
-  TokenInvalidAccountOwnerError,
-} from "@solana/spl-token";
+import { getAccount, getAssociatedTokenAddress, TokenAccountNotFoundError, TokenInvalidAccountOwnerError } from "@solana/spl-token";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { NextResponse } from "next/server";
-import { getPusdMintPublicKey, getSelectedSolanaNetwork, getSolanaRpcUrl } from "@/lib/solana-config";
+import { getPusdMintPublicKey, getSelectedSolanaNetwork, getSolanaRpcUrl, PUSD_DECIMALS } from "@/lib/solana-config";
 
 type PreflightRequest = {
   payerWallet?: string;
   creatorWallet?: string;
   currency?: "SOL" | "PUSD";
+  amount?: number;
 };
 
 function isTokenAccountMissing(err: unknown) {
@@ -55,15 +51,68 @@ export async function POST(req: Request) {
     const creatorAta = await getAssociatedTokenAddress(pusdMint, creator);
 
     let userTokenAmount = "0";
+    let userTokenTotalAmount = "0";
     let userTokenAccountExists = false;
     let creatorTokenAccountExists = false;
+    let userSourceTokenAccount = userAta.toBase58();
+    let userSourceTokenAmount = "0";
 
-    try {
-      const userAccount = await getAccount(connection, userAta, "confirmed");
-      userTokenAmount = userAccount.amount.toString();
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+      payer,
+      { mint: pusdMint },
+      "confirmed"
+    );
+
+    let totalAmount = BigInt(0);
+    let richestAccountAddress = userAta.toBase58();
+    let richestAccountAmount = BigInt(0);
+    const requestedAmount =
+      typeof body.amount === "number" && Number.isFinite(body.amount) && body.amount > 0
+        ? BigInt(Math.round(body.amount * 10 ** PUSD_DECIMALS))
+        : null;
+    let sufficientAccountAddress: string | null = null;
+    let sufficientAccountAmount = BigInt(0);
+
+    for (const tokenAccount of tokenAccounts.value) {
+      const accountAddress = tokenAccount.pubkey.toBase58();
+      const parsedAmount = BigInt(tokenAccount.account.data.parsed.info.tokenAmount.amount);
+
+      totalAmount += parsedAmount;
       userTokenAccountExists = true;
-    } catch (err) {
-      if (!isTokenAccountMissing(err)) throw err;
+
+      if (accountAddress === userAta.toBase58()) {
+        userTokenAmount = parsedAmount.toString();
+      }
+
+      if (parsedAmount > richestAccountAmount) {
+        richestAccountAmount = parsedAmount;
+        richestAccountAddress = accountAddress;
+      }
+
+      if (
+        requestedAmount !== null &&
+        parsedAmount >= requestedAmount &&
+        (sufficientAccountAddress === null || parsedAmount > sufficientAccountAmount)
+      ) {
+        sufficientAccountAddress = accountAddress;
+        sufficientAccountAmount = parsedAmount;
+      }
+    }
+
+    userTokenTotalAmount = totalAmount.toString();
+    userSourceTokenAccount = sufficientAccountAddress ?? richestAccountAddress;
+    userSourceTokenAmount = (sufficientAccountAddress ? sufficientAccountAmount : richestAccountAmount).toString();
+
+    if (!userTokenAccountExists) {
+      try {
+        const userAccount = await getAccount(connection, userAta, "confirmed");
+        userTokenAmount = userAccount.amount.toString();
+        userTokenTotalAmount = userAccount.amount.toString();
+        userSourceTokenAmount = userAccount.amount.toString();
+        userTokenAccountExists = true;
+      } catch (err) {
+        if (!isTokenAccountMissing(err)) throw err;
+      }
     }
 
     try {
@@ -77,7 +126,10 @@ export async function POST(req: Request) {
       userAta: userAta.toBase58(),
       creatorAta: creatorAta.toBase58(),
       userTokenAmount,
+      userTokenTotalAmount,
       userTokenAccountExists,
+      userSourceTokenAccount,
+      userSourceTokenAmount,
       creatorTokenAccountExists,
     });
   } catch (err) {

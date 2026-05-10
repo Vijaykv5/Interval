@@ -2,9 +2,19 @@ import { PublicKey, clusterApiUrl } from "@solana/web3.js";
 
 export type SolanaNetwork = "devnet" | "mainnet-beta";
 export type SolanaWalletChain = "solana:devnet" | "solana:mainnet";
+export type KnownTokenDefinition = {
+  symbol: string;
+  name: string;
+  decimals: number;
+  mintAddress: string;
+  network: SolanaNetwork;
+};
 
 export const SOLANA_NETWORK_COOKIE = "interval-network";
 export const PUSD_DECIMALS = 6;
+export const PUSD_SYMBOL = "PUSD";
+export const PUSD_NAME = "PUSD";
+export const PUSD_MAINNET_MINT = "CZzgUBvxaMLwMhVSLgqJn3npmxoTo6nzMNQPAnwtHF3s";
 
 export function parseSolanaNetwork(value: string | undefined | null): SolanaNetwork {
   const normalized = value?.trim().toLowerCase();
@@ -75,16 +85,17 @@ export function getSelectedSolanaWalletChain(cookieHeader?: string | null): Sola
   return getSolanaWalletChain(getSelectedSolanaNetwork(cookieHeader));
 }
 
-function getRpcEnvPrefix(network: SolanaNetwork) {
-  return network === "mainnet-beta" ? "MAINNET" : "DEVNET";
-}
-
 export function getSolanaRpcUrl(
   network: SolanaNetwork = getSelectedSolanaNetwork()
 ): string {
-  const prefix = getRpcEnvPrefix(network);
-  const specificPublic = process.env[`NEXT_PUBLIC_SOLANA_RPC_${prefix}`]?.trim();
-  const specificServer = process.env[`SOLANA_RPC_${prefix}`]?.trim();
+  const specificPublic =
+    network === "mainnet-beta"
+      ? process.env.NEXT_PUBLIC_SOLANA_RPC_MAINNET?.trim()
+      : process.env.NEXT_PUBLIC_SOLANA_RPC_DEVNET?.trim();
+  const specificServer =
+    network === "mainnet-beta"
+      ? process.env.SOLANA_RPC_MAINNET?.trim()
+      : process.env.SOLANA_RPC_DEVNET?.trim();
   const legacyPublic = process.env.NEXT_PUBLIC_SOLANA_RPC?.trim();
   const legacyServer = process.env.SOLANA_RPC?.trim();
 
@@ -101,8 +112,10 @@ export function getSolanaRpcUrl(
 export function getSolanaWsUrl(
   network: SolanaNetwork = getSelectedSolanaNetwork()
 ): string {
-  const prefix = getRpcEnvPrefix(network);
-  const specificPublic = process.env[`NEXT_PUBLIC_SOLANA_WS_${prefix}`]?.trim();
+  const specificPublic =
+    network === "mainnet-beta"
+      ? process.env.NEXT_PUBLIC_SOLANA_WS_MAINNET?.trim()
+      : process.env.NEXT_PUBLIC_SOLANA_WS_DEVNET?.trim();
   const legacyPublic = process.env.NEXT_PUBLIC_SOLANA_WS?.trim();
 
   if (specificPublic) return specificPublic;
@@ -117,9 +130,22 @@ export function getSolanaWsUrl(
 export function getPusdMintAddress(
   network: SolanaNetwork = getSelectedSolanaNetwork()
 ): string {
-  const prefix = getRpcEnvPrefix(network);
-  const specificPublic = process.env[`NEXT_PUBLIC_PUSD_MINT_${prefix}`]?.trim();
-  const specificServer = process.env[`PUSD_MINT_${prefix}`]?.trim();
+  if (network === "mainnet-beta") {
+    const configuredMainnetMint =
+      process.env.NEXT_PUBLIC_PUSD_MINT_MAINNET?.trim() ??
+      process.env.PUSD_MINT_MAINNET?.trim();
+
+    if (configuredMainnetMint) {
+      return configuredMainnetMint;
+    }
+
+    return PUSD_MAINNET_MINT;
+  }
+
+  const specificPublic =
+    process.env.NEXT_PUBLIC_PUSD_MINT_DEVNET?.trim();
+  const specificServer =
+    process.env.PUSD_MINT_DEVNET?.trim();
   const legacyPublic = process.env.NEXT_PUBLIC_PUSD_MINT?.trim();
   const legacyServer = process.env.PUSD_MINT?.trim();
 
@@ -148,6 +174,23 @@ export function getPusdMintPublicKey(
   }
 
   return new PublicKey(mintAddress);
+}
+
+export function getPusdTokenDefinition(
+  network: SolanaNetwork = getSelectedSolanaNetwork()
+): KnownTokenDefinition | null {
+  const mintAddress = getPusdMintAddress(network);
+  if (!mintAddress) {
+    return null;
+  }
+
+  return {
+    symbol: PUSD_SYMBOL,
+    name: PUSD_NAME,
+    decimals: PUSD_DECIMALS,
+    mintAddress,
+    network,
+  };
 }
 
 export function isDevnetNetwork(network: SolanaNetwork = getSelectedSolanaNetwork()) {

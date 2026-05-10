@@ -3,11 +3,15 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
+    const now = new Date();
     const creators = await prisma.creator.findMany({
       orderBy: { createdAt: "desc" },
       include: {
         slots: {
-          where: { status: "available" },
+          where: {
+            status: "available",
+            startTime: { gt: now },
+          },
           orderBy: { startTime: "asc" },
         },
       },

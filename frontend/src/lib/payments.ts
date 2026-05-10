@@ -14,6 +14,7 @@ import { payForSlotWithIntervalEscrow } from "@/lib/interval-program";
 import {
   getPusdMintPublicKey,
   PUSD_DECIMALS,
+  getSelectedSolanaNetwork,
   getSelectedSolanaWalletChain,
   type SolanaWalletChain,
 } from "@/lib/solana-config";
@@ -37,15 +38,16 @@ type PayForSlotParams = {
   currency: Currency;
 };
 
-const PUSD_MINT = getPusdMintPublicKey();
-
 type PaymentPreflight =
   | { lamports: number }
   | {
       userAta: string;
       creatorAta: string;
       userTokenAmount: string;
+      userTokenTotalAmount: string;
       userTokenAccountExists: boolean;
+      userSourceTokenAccount: string;
+      userSourceTokenAmount: string;
       creatorTokenAccountExists: boolean;
     };
 
@@ -103,6 +105,7 @@ export async function payForSlot({
       payerWallet,
       creatorWallet,
       currency,
+      amount: currency === "PUSD" ? price : undefined,
     }),
   });
 
@@ -132,8 +135,14 @@ export async function payForSlot({
 
     return result.signature;
   } else {
-    if (!PUSD_MINT) {
-      throw new Error("PUSD is not configured for the current Solana network.");
+    const network = getSelectedSolanaNetwork();
+    const pusdMint = getPusdMintPublicKey(network);
+
+    if (!pusdMint) {
+      const envSuffix = network === "mainnet-beta" ? "MAINNET" : "DEVNET";
+      throw new Error(
+        `PUSD is not configured for ${network}. Set NEXT_PUBLIC_PUSD_MINT_${envSuffix} and PUSD_MINT_${envSuffix} in frontend/.env.local, then restart the app.`
+      );
     }
 
     const transaction = new Transaction();
@@ -142,15 +151,19 @@ export async function payForSlot({
       throw new Error("Could not load PUSD account info. Please try again.");
     }
 
-    const userAta = new PublicKey(preflight.userAta);
+    const userSourceTokenAccount = new PublicKey(preflight.userSourceTokenAccount);
     const creatorAta = new PublicKey(preflight.creatorAta);
 
     if (!preflight.userTokenAccountExists) {
       throw new Error("You do not have a PUSD token account for this wallet.");
     }
 
-    if (BigInt(preflight.userTokenAmount) < amount) {
+    if (BigInt(preflight.userTokenTotalAmount) < amount) {
       throw new Error(`Insufficient PUSD. You need ${formatPaymentAmount(price, "PUSD")}.`);
+    }
+
+    if (BigInt(preflight.userSourceTokenAmount) < amount) {
+      throw new Error("Your PUSD balance is spread across multiple token accounts. Please consolidate it into one account and try again.");
     }
 
     if (!preflight.creatorTokenAccountExists) {
@@ -159,13 +172,13 @@ export async function payForSlot({
           payer,
           creatorAta,
           creator,
-          PUSD_MINT
+          pusdMint
         )
       );
     }
 
     transaction.add(
-      createTransferInstruction(userAta, creatorAta, payer, amount)
+      createTransferInstruction(userSourceTokenAccount, creatorAta, payer, amount)
     );
 
     const latestBlockhash = await fetchJson<{

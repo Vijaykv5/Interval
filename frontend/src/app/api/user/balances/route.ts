@@ -1,9 +1,4 @@
-import {
-  getAccount,
-  getAssociatedTokenAddress,
-  TokenAccountNotFoundError,
-  TokenInvalidAccountOwnerError,
-} from "@solana/spl-token";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { NextResponse } from "next/server";
 import {
@@ -12,13 +7,6 @@ import {
   getSelectedSolanaNetwork,
   getSolanaRpcUrl,
 } from "@/lib/solana-config";
-
-function isTokenAccountMissing(err: unknown) {
-  return (
-    err instanceof TokenAccountNotFoundError ||
-    err instanceof TokenInvalidAccountOwnerError
-  );
-}
 
 export async function GET(req: Request) {
   try {
@@ -45,14 +33,24 @@ export async function GET(req: Request) {
     if (pusdMint) {
       const pusdAtaAddress = await getAssociatedTokenAddress(pusdMint, owner);
       pusdAta = pusdAtaAddress.toBase58();
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+        owner,
+        { mint: pusdMint },
+        "confirmed"
+      );
 
-      try {
-        const pusdAccount = await getAccount(connection, pusdAtaAddress, "confirmed");
-        pusdBaseUnits = pusdAccount.amount.toString();
-        pusdTokenAccountExists = true;
-      } catch (err) {
-        if (!isTokenAccountMissing(err)) throw err;
+      let totalBaseUnits = BigInt(0);
+      for (const account of tokenAccounts.value) {
+        const parsedAmount =
+          account.account.data.parsed.info.tokenAmount.amount;
+        totalBaseUnits += BigInt(parsedAmount);
+
+        if (account.pubkey.equals(pusdAtaAddress)) {
+          pusdTokenAccountExists = true;
+        }
       }
+
+      pusdBaseUnits = totalBaseUnits.toString();
     }
 
     return NextResponse.json({

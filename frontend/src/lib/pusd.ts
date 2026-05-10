@@ -9,11 +9,11 @@ import bs58 from "bs58";
 import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
 import {
   getPusdMintPublicKey,
+  getSelectedSolanaNetwork,
   getSelectedSolanaWalletChain,
+  type SolanaNetwork,
   type SolanaWalletChain,
 } from "@/lib/solana-config";
-
-export const PUSD_MINT = getPusdMintPublicKey();
 
 type SignAndSendTransaction = (args: {
   transaction: Uint8Array;
@@ -47,12 +47,16 @@ export async function ensurePusdTokenAccount({
   wallet,
   walletAddress,
   signAndSendTransaction,
+  network = getSelectedSolanaNetwork(),
 }: {
   wallet: ConnectedStandardSolanaWallet;
   walletAddress: string;
   signAndSendTransaction: SignAndSendTransaction;
+  network?: SolanaNetwork;
 }) {
-  if (!PUSD_MINT) {
+  const pusdMint = getPusdMintPublicKey(network);
+
+  if (!pusdMint) {
     return { created: false, signature: null as string | null, skipped: true };
   }
 
@@ -65,7 +69,7 @@ export async function ensurePusdTokenAccount({
   }
 
   const owner = new PublicKey(walletAddress);
-  const ata = await getAssociatedTokenAddress(PUSD_MINT, owner);
+  const ata = await getAssociatedTokenAddress(pusdMint, owner);
   const latestBlockhash = await fetchJson<{
     blockhash: string;
     lastValidBlockHeight: number;
@@ -73,7 +77,7 @@ export async function ensurePusdTokenAccount({
 
   const transaction = new Transaction();
   transaction.add(
-    createAssociatedTokenAccountInstruction(owner, ata, owner, PUSD_MINT)
+    createAssociatedTokenAccountInstruction(owner, ata, owner, pusdMint)
   );
   transaction.feePayer = owner;
   transaction.recentBlockhash = latestBlockhash.blockhash;
