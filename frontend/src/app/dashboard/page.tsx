@@ -28,6 +28,8 @@ import {
   LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 
+const LP_POSITIONS_SUMMARY_TTL_MS = 60_000;
+
 type Slot = {
   id: string;
   startTime: string;
@@ -207,6 +209,7 @@ export default function Dashboard() {
   const [initializingPlatform, setInitializingPlatform] = useState(false);
   const [claimingBookingId, setClaimingBookingId] = useState<string | null>(null);
   const attemptedAutoReleaseIds = useRef<Set<string>>(new Set());
+  const lastLpPositionsSummaryFetch = useRef<{ wallet: string; fetchedAt: number } | null>(null);
 
   const solanaWallet = wallets[0];
   const walletAddress = solanaWallet?.address ?? null;
@@ -227,12 +230,23 @@ export default function Dashboard() {
     }
   }, []);
 
-  const refreshLpPositionsSummary = useCallback(async (wallet: string) => {
+  const refreshLpPositionsSummary = useCallback(async (wallet: string, options?: { force?: boolean }) => {
+    const lastFetch = lastLpPositionsSummaryFetch.current;
+    const now = Date.now();
+    if (
+      !options?.force &&
+      lastFetch?.wallet === wallet &&
+      now - lastFetch.fetchedAt < LP_POSITIONS_SUMMARY_TTL_MS
+    ) {
+      return;
+    }
+
     try {
       const res = await fetch(`/api/lp-agent/positions?owner=${encodeURIComponent(wallet)}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error("Failed to load LP positions");
       const positions = Array.isArray(data?.data) ? data.data : [];
+      lastLpPositionsSummaryFetch.current = { wallet, fetchedAt: Date.now() };
       setLpPositionsSummary({ count: positions.length });
     } catch {
       setLpPositionsSummary({ count: 0 });
@@ -337,7 +351,7 @@ export default function Dashboard() {
     }
 
     refreshTreasuryBalances(walletAddress, true);
-    refreshLpPositionsSummary(walletAddress);
+    refreshLpPositionsSummary(walletAddress, { force: true });
   }, [walletAddress, refreshTreasuryBalances, refreshLpPositionsSummary]);
 
   useEffect(() => {
@@ -441,14 +455,13 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Auto-refresh: poll every 5s + refetch when tab becomes visible
+  // Auto-refresh: keep dashboard data fresh without polling LP Agent continuously
   useEffect(() => {
     if (!creator?.id || !walletAddress) return;
 
     const interval = setInterval(() => {
       refreshDashboard(creator.id);
       refreshTreasuryBalances(walletAddress);
-      refreshLpPositionsSummary(walletAddress);
     }, 5000);
 
     const onFocus = () => {

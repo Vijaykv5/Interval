@@ -88,6 +88,24 @@ type LandedZapOutResponse = {
   signature?: string | null;
 };
 
+const RECOMMENDATIONS_TTL_MS = 5 * 60_000;
+const POSITIONS_TTL_MS = 60_000;
+
+let recommendationsCache:
+  | {
+      fetchedAt: number;
+      data: PoolRecommendation[];
+    }
+  | null = null;
+
+const positionsCache = new Map<
+  string,
+  {
+    fetchedAt: number;
+    data: Position[];
+  }
+>();
+
 function formatUsd(value: number | null | undefined) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("en-US", {
@@ -372,7 +390,18 @@ export function TreasuryLpStudio({
     return signed;
   }
 
-  async function fetchRecommendations() {
+  async function fetchRecommendations(options?: { force?: boolean }) {
+    const now = Date.now();
+    if (
+      !options?.force &&
+      recommendationsCache &&
+      now - recommendationsCache.fetchedAt < RECOMMENDATIONS_TTL_MS
+    ) {
+      setRecommendations(recommendationsCache.data);
+      setRecommendationsError(null);
+      return recommendationsCache.data;
+    }
+
     setRecommendationsLoading(true);
     setRecommendationsError(null);
     try {
@@ -380,18 +409,39 @@ export function TreasuryLpStudio({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Failed to load recommendations");
       const pools = Array.isArray(data?.data) ? (data.data as PoolRecommendation[]) : [];
-      setRecommendations(sortPools(pools));
+      const nextRecommendations = sortPools(pools);
+      recommendationsCache = {
+        fetchedAt: Date.now(),
+        data: nextRecommendations,
+      };
+      setRecommendations(nextRecommendations);
+      return nextRecommendations;
     } catch (error) {
       setRecommendationsError(error instanceof Error ? error.message : "Failed to load recommendations");
+      return [];
     } finally {
       setRecommendationsLoading(false);
     }
   }
 
-  async function fetchPositions(options?: { silent?: boolean }) {
+  async function fetchPositions(options?: { silent?: boolean; force?: boolean }) {
     if (!walletAddress) {
       setPositions([]);
       return [];
+    }
+
+    const cachedPositions = positionsCache.get(walletAddress);
+    const now = Date.now();
+    if (
+      !options?.force &&
+      cachedPositions &&
+      now - cachedPositions.fetchedAt < POSITIONS_TTL_MS
+    ) {
+      setPositions(cachedPositions.data);
+      if (!options?.silent) {
+        setPositionsError(null);
+      }
+      return cachedPositions.data;
     }
 
     if (!options?.silent) {
@@ -403,6 +453,10 @@ export function TreasuryLpStudio({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Failed to load positions");
       const nextPositions = Array.isArray(data?.data) ? (data.data as Position[]) : [];
+      positionsCache.set(walletAddress, {
+        fetchedAt: Date.now(),
+        data: nextPositions,
+      });
       setPositions(nextPositions);
       return nextPositions;
     } catch (error) {
@@ -421,7 +475,7 @@ export function TreasuryLpStudio({
 
     for (let attempt = 1; attempt <= 6; attempt += 1) {
       await new Promise((resolve) => window.setTimeout(resolve, 4000));
-      const latestPositions = await fetchPositions({ silent: true });
+      const latestPositions = await fetchPositions({ silent: true, force: true });
       const hasNewPosition =
         latestPositions.length > previousPositions.length ||
         latestPositions.some((position) => !previousIds.has(position.id));
@@ -737,7 +791,7 @@ export function TreasuryLpStudio({
           <button
             type="button"
             onClick={() => {
-              void fetchPositions();
+              void fetchPositions({ force: true });
             }}
             className="mt-3 min-h-10 rounded-lg border border-red-300/25 px-3 text-sm font-medium text-red-100 hover:bg-red-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40"
           >
@@ -977,7 +1031,7 @@ export function TreasuryLpStudio({
           ? `Signature ${data.signature.slice(0, 8)}...`
           : "The LP Agent exit transaction was submitted.",
       });
-      await fetchPositions();
+      await fetchPositions({ force: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Zap-out failed");
     } finally {
@@ -1002,13 +1056,13 @@ export function TreasuryLpStudio({
             <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-white/65">
               {positions.length} open
             </span>
-            <button
-              type="button"
-              onClick={() => {
-                void fetchPositions();
-              }}
-              aria-label="Refresh LP positions"
-              title="Refresh LP positions"
+              <button
+                type="button"
+                onClick={() => {
+                  void fetchPositions({ force: true });
+                }}
+                aria-label="Refresh LP positions"
+                title="Refresh LP positions"
               className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-white/15 bg-white/5 px-3 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305]"
             >
               <RefreshIcon />
@@ -1037,7 +1091,9 @@ export function TreasuryLpStudio({
           </div>
           <button
             type="button"
-            onClick={fetchRecommendations}
+            onClick={() => {
+              void fetchRecommendations({ force: true });
+            }}
             aria-label="Refresh LP pool recommendations"
             title="Refresh LP pool recommendations"
             className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-white/15 bg-white/5 px-3 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030305]"
@@ -1084,7 +1140,9 @@ export function TreasuryLpStudio({
               <p>{recommendationsError}</p>
               <button
                 type="button"
-                onClick={fetchRecommendations}
+                onClick={() => {
+                  void fetchRecommendations({ force: true });
+                }}
                 className="mt-3 min-h-10 rounded-lg border border-red-300/25 px-3 text-sm font-medium text-red-100 hover:bg-red-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40"
               >
                 Try again
