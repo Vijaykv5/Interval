@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import localFont from "next/font/local";
 import { Toaster } from "sonner";
 import { BetaBanner } from "@/components/beta-banner";
+import { CreatorIntentGate } from "@/components/creator-intent-gate";
 import { NetworkProvider } from "@/components/network-provider";
 import { PrivyProviders } from "@/components/privy-providers";
 import { UserWalletProvider } from "@/components/user-wallet-provider";
@@ -64,7 +65,9 @@ export default async function RootLayout({
           <NetworkProvider initialNetwork={initialNetwork}>
             <UserWalletProvider>
               <BetaBanner />
-              <PrivyProviders>{children}</PrivyProviders>
+              <PrivyProviders>
+                <CreatorIntentGate>{children}</CreatorIntentGate>
+              </PrivyProviders>
               <Toaster
                 position="bottom-right"
                 theme="dark"

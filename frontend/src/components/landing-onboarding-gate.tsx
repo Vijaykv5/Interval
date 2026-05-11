@@ -24,6 +24,10 @@ export function LandingOnboardingGate({ children }: { children: React.ReactNode 
 
     const authIntent = getAuthIntent();
 
+    if (authIntent === "creator") {
+      return;
+    }
+
     if (authIntent === "user") {
       clearAuthIntent();
       router.replace("/profile");
