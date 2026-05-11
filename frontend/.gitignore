@@ -47,6 +47,11 @@ next-env.d.ts
 # bun
 .bun
 
+# package manager lockfiles
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
 # cache
 .cache
 .eslintcache
