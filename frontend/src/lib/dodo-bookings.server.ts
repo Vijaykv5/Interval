@@ -260,7 +260,10 @@ export async function finalizeDodoBookingPayment(payment: Payments.Payment) {
     return createdBooking;
   });
 
-  const settledBooking = await settleDodoUsdcPayout(slot, booking);
+  const settledBooking = await settleDodoUsdcPayout(slot, booking).catch((error) => {
+    console.error("Dodo USDC payout failed after booking confirmation:", error);
+    return booking;
+  });
 
   if (settledBooking.signature === payment.payment_id) {
     void sendConfirmation(slot, booking).catch((error) => {

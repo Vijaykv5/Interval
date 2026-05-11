@@ -6,16 +6,30 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const paymentId = searchParams.get("paymentId")?.trim();
+    const sessionId = searchParams.get("sessionId")?.trim();
 
-    if (!paymentId) {
+    if (!paymentId && !sessionId) {
       return NextResponse.json(
-        { error: "paymentId is required." },
+        { error: "paymentId or sessionId is required." },
         { status: 400 }
       );
     }
 
     const dodo = createDodoClient();
-    const payment = await dodo.payments.retrieve(paymentId);
+    const resolvedPaymentId =
+      paymentId ||
+      (sessionId
+        ? (await dodo.checkoutSessions.retrieve(sessionId)).payment_id
+        : null);
+
+    if (!resolvedPaymentId) {
+      return NextResponse.json({
+        status: "processing",
+        bookingId: null,
+      });
+    }
+
+    const payment = await dodo.payments.retrieve(resolvedPaymentId);
     const normalizedStatus = payment.status ?? "processing";
 
     const booking =

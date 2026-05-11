@@ -14,10 +14,18 @@ export default function DodoPaymentCompletePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const paymentId = searchParams.get("payment_id");
+  const querySessionId =
+    searchParams.get("checkout_session_id") ||
+    searchParams.get("session_id") ||
+    searchParams.get("sessionId");
+  const slotId = searchParams.get("slotId");
+  const wallet = searchParams.get("wallet");
   const rawStatus = searchParams.get("status");
   const [message, setMessage] = useState("Checking your payment...");
   const [error, setError] = useState<string | null>(null);
-  const missingPaymentId = !paymentId;
+  const [storedSessionId, setStoredSessionId] = useState<string | null>(null);
+  const sessionId = querySessionId || storedSessionId;
+  const missingPaymentReference = !paymentId && !sessionId;
 
   const statusLabel = useMemo(() => {
     if (!rawStatus) return "Processing";
@@ -25,17 +33,33 @@ export default function DodoPaymentCompletePage() {
   }, [rawStatus]);
 
   useEffect(() => {
-    if (missingPaymentId) {
+    if (querySessionId || !slotId || !wallet) return;
+
+    setStoredSessionId(
+      window.sessionStorage.getItem(`interval:dodo-booking:${slotId}:${wallet}`)
+    );
+  }, [querySessionId, slotId, wallet]);
+
+  useEffect(() => {
+    if (missingPaymentReference) {
       return;
     }
 
     const activePaymentId = paymentId;
+    const activeSessionId = sessionId;
     let cancelled = false;
 
     async function poll() {
       for (let attempt = 0; attempt < 20; attempt += 1) {
+        const params = new URLSearchParams();
+        if (activePaymentId) {
+          params.set("paymentId", activePaymentId);
+        } else if (activeSessionId) {
+          params.set("sessionId", activeSessionId);
+        }
+
         const res = await fetch(
-          `/api/payment/dodo/status?paymentId=${encodeURIComponent(activePaymentId)}`,
+          `/api/payment/dodo/status?${params.toString()}`,
           { cache: "no-store" }
         );
         const data = (await res.json().catch(() => ({}))) as DodoStatusResponse;
@@ -47,6 +71,9 @@ export default function DodoPaymentCompletePage() {
         if (cancelled) return;
 
         if (data.status === "succeeded" && data.bookingId) {
+          if (slotId && wallet) {
+            window.sessionStorage.removeItem(`interval:dodo-booking:${slotId}:${wallet}`);
+          }
           router.replace(`/profile?booked=1&booking=${encodeURIComponent(data.bookingId)}&provider=dodo`);
           return;
         }
@@ -77,7 +104,7 @@ export default function DodoPaymentCompletePage() {
     return () => {
       cancelled = true;
     };
-  }, [missingPaymentId, paymentId, router]);
+  }, [missingPaymentReference, paymentId, router, sessionId, slotId, wallet]);
 
   return (
     <main className="min-h-screen bg-[#060606] px-4 py-16 text-white">
@@ -92,11 +119,11 @@ export default function DodoPaymentCompletePage() {
           {statusLabel}
         </h1>
         <p className="mt-4 text-sm leading-6 text-white/60">
-          {missingPaymentId ? "We could not verify your checkout." : message}
+          {missingPaymentReference ? "We could not verify your checkout." : message}
         </p>
-        {missingPaymentId ? (
+        {missingPaymentReference ? (
           <p className="mt-4 text-sm text-red-300">
-            Dodo did not return a payment id for this booking.
+            Dodo did not return a payment or session id for this booking.
           </p>
         ) : error ? (
           <p className="mt-4 text-sm text-red-300">{error}</p>
