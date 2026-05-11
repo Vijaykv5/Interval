@@ -6,20 +6,16 @@ import {
 } from "@solana/spl-token";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
-import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
 import {
   getPusdMintPublicKey,
   getSelectedSolanaNetwork,
   getSelectedSolanaWalletChain,
   type SolanaNetwork,
-  type SolanaWalletChain,
 } from "@/lib/solana-config";
-
-type SignAndSendTransaction = (args: {
-  transaction: Uint8Array;
-  wallet: ConnectedStandardSolanaWallet;
-  chain: SolanaWalletChain;
-}) => Promise<{ signature: Uint8Array }>;
+import type {
+  IntervalSignAndSendTransaction,
+  IntervalSolanaWallet,
+} from "@/lib/solana-wallet";
 
 type WalletBalances = {
   pusdTokenAccountExists?: boolean;
@@ -43,15 +39,15 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-export async function ensurePusdTokenAccount({
+export async function ensurePusdTokenAccount<TWallet extends IntervalSolanaWallet>({
   wallet,
   walletAddress,
   signAndSendTransaction,
   network = getSelectedSolanaNetwork(),
 }: {
-  wallet: ConnectedStandardSolanaWallet;
+  wallet: TWallet;
   walletAddress: string;
-  signAndSendTransaction: SignAndSendTransaction;
+  signAndSendTransaction: IntervalSignAndSendTransaction<TWallet>;
   network?: SolanaNetwork;
 }) {
   const pusdMint = getPusdMintPublicKey(network);

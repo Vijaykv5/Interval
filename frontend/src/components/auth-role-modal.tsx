@@ -29,8 +29,8 @@ const roleCards: Array<{
     eyebrow: "User / Booker",
     title: "Find creators, track bookings, and join calls smoothly.",
     description:
-      "Sign in with Gmail to unlock your user profile, wallet view, and booking activity.",
-    cta: "Continue as user",
+      "Connect your own Solana wallet to book slots, see your activity, and pay creators directly.",
+    cta: "Connect as user",
   },
 ];
 

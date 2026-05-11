@@ -1,7 +1,10 @@
 import { Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
-import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
-import { getSelectedSolanaWalletChain, getSolanaRpcUrl, type SolanaWalletChain } from "@/lib/solana-config";
+import { getSelectedSolanaWalletChain, getSolanaRpcUrl } from "@/lib/solana-config";
+import type {
+  IntervalSignAndSendTransaction,
+  IntervalSolanaWallet,
+} from "@/lib/solana-wallet";
 
 export const INTERVAL_PROGRAM_ID = new PublicKey("4ATtXLmT25nh447GjP9BtdWJudN8uuqcNNmawRWexfx6");
 
@@ -15,12 +18,6 @@ const REGISTER_CREATOR_DISCRIMINATOR = Uint8Array.from([85, 3, 194, 210, 164, 14
 const ONBOARD_CREATOR_DISCRIMINATOR = Uint8Array.from([226, 92, 121, 226, 126, 161, 140, 30]);
 const BOOK_SLOT_DISCRIMINATOR = Uint8Array.from([233, 227, 65, 37, 70, 197, 216, 39]);
 const RELEASE_FUNDS_DISCRIMINATOR = Uint8Array.from([225, 88, 91, 108, 126, 52, 2, 26]);
-type SignAndSendTransaction = (args: {
-  transaction: Uint8Array;
-  wallet: ConnectedStandardSolanaWallet;
-  chain: SolanaWalletChain;
-}) => Promise<{ signature: Uint8Array }>;
-
 type ConfirmedBlockhash = {
   blockhash: string;
   lastValidBlockHeight: number;
@@ -171,17 +168,19 @@ export function findBookingEscrowPda(bookingId: Uint8Array) {
 }
 
 export async function deriveSlotHash(slotId: string) {
+  const bytes = new TextEncoder().encode(`interval-slot:${slotId}`);
   const digest = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(`interval-slot:${slotId}`)
+    bytes.buffer as ArrayBuffer
   );
   return new Uint8Array(digest);
 }
 
 export async function deriveBookingId(slotId: string, payerWallet: string) {
+  const bytes = new TextEncoder().encode(`interval-booking:${slotId}:${payerWallet}`);
   const digest = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(`interval-booking:${slotId}:${payerWallet}`)
+    bytes.buffer as ArrayBuffer
   );
   return new Uint8Array(digest);
 }
@@ -217,14 +216,14 @@ async function assertPlatformInitialized() {
   return platform;
 }
 
-async function sendAndConfirmTransaction({
+async function sendAndConfirmTransaction<TWallet extends IntervalSolanaWallet>({
   wallet,
   signAndSendTransaction,
   transaction,
   feePayer,
 }: {
-  wallet: ConnectedStandardSolanaWallet;
-  signAndSendTransaction: SignAndSendTransaction;
+  wallet: TWallet;
+  signAndSendTransaction: IntervalSignAndSendTransaction<TWallet>;
   transaction: Transaction;
   feePayer: PublicKey;
 }) {
@@ -334,14 +333,14 @@ export async function buildInitializeTreasuryInstruction(admin: PublicKey) {
   });
 }
 
-export async function initializeIntervalPlatform({
+export async function initializeIntervalPlatform<TWallet extends IntervalSolanaWallet>({
   wallet,
   walletAddress,
   signAndSendTransaction,
 }: {
-  wallet: ConnectedStandardSolanaWallet;
+  wallet: TWallet;
   walletAddress: string;
-  signAndSendTransaction: SignAndSendTransaction;
+  signAndSendTransaction: IntervalSignAndSendTransaction<TWallet>;
 }) {
   if (!canInitializeIntervalPlatform(walletAddress)) {
     throw new Error("This wallet is not allowed to initialize the Interval platform.");
@@ -366,14 +365,14 @@ export async function initializeIntervalPlatform({
   return { created: true, signature };
 }
 
-export async function ensureIntervalCreatorProfile({
+export async function ensureIntervalCreatorProfile<TWallet extends IntervalSolanaWallet>({
   wallet,
   walletAddress,
   signAndSendTransaction,
 }: {
-  wallet: ConnectedStandardSolanaWallet;
+  wallet: TWallet;
   walletAddress: string;
-  signAndSendTransaction: SignAndSendTransaction;
+  signAndSendTransaction: IntervalSignAndSendTransaction<TWallet>;
 }) {
   await assertPlatformInitialized();
 
@@ -486,7 +485,7 @@ export async function buildBookSlotInstruction({
   };
 }
 
-export async function payForSlotWithIntervalEscrow({
+export async function payForSlotWithIntervalEscrow<TWallet extends IntervalSolanaWallet>({
   wallet,
   signAndSendTransaction,
   payerWallet,
@@ -495,8 +494,8 @@ export async function payForSlotWithIntervalEscrow({
   price,
   scheduledEndTime,
 }: {
-  wallet: ConnectedStandardSolanaWallet;
-  signAndSendTransaction: SignAndSendTransaction;
+  wallet: TWallet;
+  signAndSendTransaction: IntervalSignAndSendTransaction<TWallet>;
   payerWallet: string;
   creatorWallet: string;
   slotId: string;
@@ -592,15 +591,15 @@ export async function buildReleaseFundsInstruction({
   };
 }
 
-export async function releaseBookingFunds({
+export async function releaseBookingFunds<TWallet extends IntervalSolanaWallet>({
   wallet,
   signAndSendTransaction,
   creatorWallet,
   payerWallet,
   slotId,
 }: {
-  wallet: ConnectedStandardSolanaWallet;
-  signAndSendTransaction: SignAndSendTransaction;
+  wallet: TWallet;
+  signAndSendTransaction: IntervalSignAndSendTransaction<TWallet>;
   creatorWallet: string;
   payerWallet: string;
   slotId: string;

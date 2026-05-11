@@ -4,11 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { usePrivy } from "@privy-io/react-auth";
-import { useSignAndSendTransaction, useExportWallet, useWallets } from "@privy-io/react-auth/solana";
 import { LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { useSolanaNetwork } from "@/components/network-provider";
 import { SiteNav } from "@/components/site-nav";
+import { useUserWallet } from "@/components/user-wallet-provider";
 import { ensurePusdTokenAccount } from "@/lib/pusd";
 import { getSelectedSolanaWalletChain, hasConfiguredPusdMint } from "@/lib/solana-config";
 
@@ -64,33 +63,6 @@ function getProfileInitial(value: string | null) {
   return value.trim().charAt(0).toUpperCase() || "I";
 }
 
-function formatProfileName(email: string | null | undefined, fallback = "Interval User") {
-  if (!email) return fallback;
-  const localPart = email.split("@")[0]?.trim();
-  if (!localPart) return fallback;
-
-  const normalized = localPart
-    .replace(/[._-]+/g, " ")
-    .replace(/\d+$/g, "")
-    .trim();
-
-  const candidate = normalized.length > 0 ? normalized : localPart;
-  return candidate
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function getLinkedAccountName(user: ReturnType<typeof usePrivy>["user"]) {
-  const account = user?.linkedAccounts.find(
-    (item): item is typeof item & { name: string } =>
-      "name" in item && typeof item.name === "string" && item.name.trim().length > 0
-  );
-
-  return account?.name ?? null;
-}
-
 function formatTokenAmount(amount: number, decimals: number) {
   return amount.toLocaleString("en-US", {
     minimumFractionDigits: amount === 0 ? 2 : 0,
@@ -140,10 +112,15 @@ function getPusdProvisionSessionKey(network: string, walletAddress: string) {
 
 export default function ProfilePage() {
   const searchParams = useSearchParams();
-  const { ready, authenticated, login, connectWallet, getAccessToken, user } = usePrivy();
-  const { wallets } = useWallets();
-  const { signAndSendTransaction } = useSignAndSendTransaction();
-  const { exportWallet } = useExportWallet();
+  const {
+    ready,
+    connected,
+    wallet,
+    walletAddress,
+    openConnectModal,
+    signAndSendTransaction,
+    walletLabel,
+  } = useUserWallet();
   const { network } = useSolanaNetwork();
   const [balances, setBalances] = useState<BalanceData | null>(null);
   const [bookingSummary, setBookingSummary] = useState<BookingSummaryData | null>(null);
@@ -155,24 +132,14 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<"sessions" | "rewards" | "wallet">("sessions");
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
-  const [exportModalOpen, setExportModalOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawRecipient, setWithdrawRecipient] = useState("");
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
-  const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
-  const [recoveryLoading, setRecoveryLoading] = useState(false);
-  const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [authSettled, setAuthSettled] = useState(false);
   const pusdProvisionInFlightRef = useRef<string | null>(null);
 
-  const wallet = wallets[0];
-  const walletAddress = wallet?.address ?? null;
-  const email =
-    user?.linkedAccounts.find((account) => account.type === "google_oauth" && "email" in account)?.email ??
-    user?.linkedAccounts.find((account) => account.type === "email" && "address" in account)?.address ??
-    "Interval user";
-  const profileName = getLinkedAccountName(user) ?? formatProfileName(email);
+  const profileName = walletLabel ? `${walletLabel} user` : "Interval User";
 
   const loadBalances = useCallback(async () => {
     if (!walletAddress) return;
@@ -225,48 +192,6 @@ export default function ProfilePage() {
     await navigator.clipboard.writeText(value);
     setCopied(target);
     setTimeout(() => setCopied(null), 1800);
-  }
-
-  async function openExportModal() {
-    setExportModalOpen(true);
-    setRecoveryLoading(true);
-    setRecoveryError(null);
-    setRecoveryKey(null);
-
-    try {
-      const token = await getAccessToken();
-      if (!token) {
-        setRecoveryError("Please sign in again.");
-        return;
-      }
-
-      const res = await fetch("/api/wallet/export-recovery", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (res.status === 400 && data?.code === "use_client_export") {
-          setExportModalOpen(false);
-          exportWallet();
-          return;
-        }
-        setRecoveryError(data?.error ?? "Could not load recovery key.");
-        return;
-      }
-
-      setRecoveryKey(data.private_key ?? null);
-      if (!data.private_key) {
-        setRecoveryError("No key returned.");
-      }
-    } catch {
-      setRecoveryError("Network error. Try again.");
-    } finally {
-      setRecoveryLoading(false);
-    }
   }
 
   async function handleWithdraw(e: React.FormEvent) {
@@ -376,7 +301,7 @@ export default function ProfilePage() {
       return;
     }
 
-    if (authenticated) {
+    if (connected) {
       setAuthSettled(true);
       return;
     }
@@ -388,10 +313,10 @@ export default function ProfilePage() {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [authenticated, ready]);
+  }, [connected, ready]);
 
   useEffect(() => {
-    if (!ready || !authenticated) return;
+    if (!ready || !connected) return;
     if (!hasConfiguredPusdMint(network)) return;
     if (!wallet || !walletAddress) return;
 
@@ -436,7 +361,7 @@ export default function ProfilePage() {
         }
       });
   }, [
-    authenticated,
+    connected,
     loadBalances,
     network,
     ready,
@@ -462,7 +387,7 @@ export default function ProfilePage() {
             <div className="mt-6 h-10 w-48 animate-pulse rounded-full bg-white/8" />
             <div className="mt-6 h-72 animate-pulse rounded-[1.5rem] bg-white/8" />
           </section>
-        ) : !authenticated ? (
+        ) : !connected ? (
           <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#161616] shadow-[0_26px_80px_rgba(0,0,0,0.24)]">
             <div className="grid gap-8 px-6 py-8 sm:px-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
               <div>
@@ -473,17 +398,27 @@ export default function ProfilePage() {
                   className="mt-3 text-3xl font-bold text-white sm:text-4xl"
                   style={{ fontFamily: "var(--font-archivo-condensed), sans-serif" }}
                 >
-                  Sign in to see your bookings in one place
+                  Connect your wallet to see your bookings in one place
                 </h2>
                 <p className="mt-3 max-w-xl text-sm text-white/55 sm:text-base">
                   Keep your upcoming calls, balances, and recent creator sessions on a single quiet screen.
                 </p>
                 <button
                   type="button"
-                  onClick={login}
+                  onClick={() => {
+                    try {
+                      openConnectModal();
+                    } catch (connectError) {
+                      toast.error(
+                        connectError instanceof Error
+                          ? connectError.message
+                          : "Wallet connection failed."
+                      );
+                    }
+                  }}
                   className="mt-6 inline-flex min-h-11 items-center justify-center rounded-full border border-[#ffd28e]/20 bg-[#ffd28e] px-5 py-2.5 font-semibold text-black transition-colors hover:bg-[#ffc97a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#060606]"
                 >
-                  Sign in
+                  Connect wallet
                 </button>
               </div>
               <div className="grid gap-3">
@@ -493,47 +428,13 @@ export default function ProfilePage() {
               </div>
             </div>
           </section>
-        ) : !walletAddress ? (
-          <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#161616]">
-            <div className="grid gap-8 px-6 py-8 sm:px-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/45">
-                  Wallet required
-                </p>
-                <h2
-                  className="mt-3 text-3xl font-bold text-white sm:text-4xl"
-                  style={{ fontFamily: "var(--font-archivo-condensed), sans-serif" }}
-                >
-                  Connect your Solana wallet
-                </h2>
-                <p className="mt-3 max-w-xl text-sm text-white/55 sm:text-base">
-                  Once your wallet is connected, we can load your balances, booking activity, and token setup status.
-                </p>
-                <button
-                  type="button"
-                  onClick={connectWallet}
-                  className="mt-6 inline-flex min-h-11 items-center justify-center rounded-full border border-[#ffd28e]/20 bg-[#ffd28e] px-5 py-2.5 font-semibold text-black transition-colors hover:bg-[#ffc97a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#060606]"
-                >
-                  Connect wallet
-                </button>
-              </div>
-              <div className="rounded-[1.75rem] border border-white/10 bg-[#1d1d1d] p-5">
-                <p className="text-sm font-medium text-white">What you’ll get</p>
-                <ul className="mt-4 space-y-3 text-sm text-white/55">
-                  <li>Recent bookings and your next creator session</li>
-                  <li>Live SOL and PUSD balances</li>
-                  <li>Quick actions for copy, refresh, and token account setup</li>
-                </ul>
-              </div>
-            </div>
-          </section>
         ) : (
           <>
             <section className="rounded-[2rem] bg-[linear-gradient(180deg,rgba(18,18,18,0.92),rgba(14,14,14,0.94))] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.22)] sm:p-8">
               <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
                   <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[linear-gradient(180deg,#2b9a69,#1f7c55)] text-4xl font-semibold text-white shadow-[0_16px_44px_rgba(34,139,93,0.24)]">
-                    {getProfileInitial(email)}
+                    {getProfileInitial(walletAddress)}
                   </div>
                   <div>
                     <p
@@ -543,7 +444,7 @@ export default function ProfilePage() {
                       {profileName}
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-white/48">
-                      <span className="font-mono text-lg">{shortenAddress(walletAddress)}</span>
+                      <span className="font-mono text-lg">{shortenAddress(walletAddress ?? "")}</span>
                       <button
                         type="button"
                         onClick={copyWallet}
@@ -580,13 +481,6 @@ export default function ProfilePage() {
                     className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#121212] px-6 py-2.5 text-sm font-medium text-white/82 transition-colors hover:bg-[#191919] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#060606]"
                   >
                     Withdraw
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openExportModal}
-                    className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#121212] px-6 py-2.5 text-sm font-medium text-white/82 transition-colors hover:bg-[#191919] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#060606]"
-                  >
-                    Export Wallet
                   </button>
                 </div>
               </div>
@@ -921,46 +815,6 @@ export default function ProfilePage() {
               </ProfileModal>
             )}
 
-            {exportModalOpen && (
-              <ProfileModal
-                title="Export Wallet"
-                onClose={() => !recoveryLoading && setExportModalOpen(false)}
-              >
-                <div className="space-y-5">
-                  {recoveryError && (
-                    <div className="rounded-[1.25rem] bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                      {recoveryError}
-                    </div>
-                  )}
-                  {recoveryLoading && !recoveryKey ? (
-                    <div className="rounded-[1.25rem] bg-[#161616] px-4 py-6 text-sm text-white/58">
-                      Loading recovery key...
-                    </div>
-                  ) : recoveryKey ? (
-                    <>
-                      <ModalField
-                        label="Recovery key"
-                        value={recoveryKey}
-                        mono
-                        trailingAction={
-                          <button
-                            type="button"
-                            onClick={() => void copyValue(recoveryKey, "recovery")}
-                            className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full bg-[#1f1f1f] text-white/76 transition-colors hover:bg-[#272727] hover:text-white"
-                            aria-label="Copy recovery key"
-                          >
-                            <AnimatedStatusIcon copied={copied === "recovery"} />
-                          </button>
-                        }
-                      />
-                      <p className="text-sm text-white/42">
-                        Store this securely. Anyone with this key can control your wallet.
-                      </p>
-                    </>
-                  ) : null}
-                </div>
-              </ProfileModal>
-            )}
           </>
         )}
       </main>

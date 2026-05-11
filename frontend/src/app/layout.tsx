@@ -5,8 +5,10 @@ import { Toaster } from "sonner";
 import { BetaBanner } from "@/components/beta-banner";
 import { NetworkProvider } from "@/components/network-provider";
 import { PrivyProviders } from "@/components/privy-providers";
+import { UserWalletProvider } from "@/components/user-wallet-provider";
 import { getSelectedSolanaNetwork } from "@/lib/solana-config";
 import "./globals.css";
+import "@solana/wallet-adapter-react-ui/styles.css";
 
 const archivoCondensed = localFont({
   src: "../../public/fonts/Archivo_Condensed-SemiBold.ttf",
@@ -60,22 +62,24 @@ export default async function RootLayout({
         <div className="bg-orbit-glow" />
         <div className="relative z-10 min-h-screen bg-transparent">
           <NetworkProvider initialNetwork={initialNetwork}>
-            <BetaBanner />
-            <PrivyProviders>{children}</PrivyProviders>
-            <Toaster
-              position="bottom-right"
-              theme="dark"
-              className="interval-toaster"
-              toastOptions={{
-                classNames: {
-                  toast: "interval-toast",
-                  title: "interval-toast-title",
-                  description: "interval-toast-description",
-                  success: "interval-toast-success",
-                  error: "interval-toast-error",
-                },
-              }}
-            />
+            <UserWalletProvider>
+              <BetaBanner />
+              <PrivyProviders>{children}</PrivyProviders>
+              <Toaster
+                position="bottom-right"
+                theme="dark"
+                className="interval-toaster"
+                toastOptions={{
+                  classNames: {
+                    toast: "interval-toast",
+                    title: "interval-toast-title",
+                    description: "interval-toast-description",
+                    success: "interval-toast-success",
+                    error: "interval-toast-error",
+                  },
+                }}
+              />
+            </UserWalletProvider>
           </NetworkProvider>
         </div>
       </body>

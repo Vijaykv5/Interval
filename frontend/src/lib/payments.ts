@@ -8,7 +8,6 @@ import {
   PublicKey,
   Transaction,
 } from "@solana/web3.js";
-import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
 import bs58 from "bs58";
 import { payForSlotWithIntervalEscrow } from "@/lib/interval-program";
 import {
@@ -16,20 +15,17 @@ import {
   PUSD_DECIMALS,
   getSelectedSolanaNetwork,
   getSelectedSolanaWalletChain,
-  type SolanaWalletChain,
 } from "@/lib/solana-config";
+import type {
+  IntervalSignAndSendTransaction,
+  IntervalSolanaWallet,
+} from "@/lib/solana-wallet";
 
 export type Currency = "SOL" | "PUSD";
 
-type SignAndSendTransaction = (args: {
-  transaction: Uint8Array;
-  wallet: ConnectedStandardSolanaWallet;
-  chain: SolanaWalletChain;
-}) => Promise<{ signature: Uint8Array }>;
-
-type PayForSlotParams = {
-  wallet: ConnectedStandardSolanaWallet;
-  signAndSendTransaction: SignAndSendTransaction;
+type PayForSlotParams<TWallet extends IntervalSolanaWallet> = {
+  wallet: TWallet;
+  signAndSendTransaction: IntervalSignAndSendTransaction<TWallet>;
   payerWallet: string;
   creatorWallet: string;
   slotId?: string;
@@ -79,7 +75,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-export async function payForSlot({
+export async function payForSlot<TWallet extends IntervalSolanaWallet>({
   wallet,
   signAndSendTransaction,
   payerWallet,
@@ -88,7 +84,7 @@ export async function payForSlot({
   scheduledEndTime,
   price,
   currency,
-}: PayForSlotParams): Promise<string> {
+}: PayForSlotParams<TWallet>): Promise<string> {
   if (!payerWallet) {
     throw new Error("Connect your wallet before booking.");
   }

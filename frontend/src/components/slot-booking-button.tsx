@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePrivy } from "@privy-io/react-auth";
-import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
 import { toast } from "sonner";
-import { setAuthIntent } from "@/lib/auth-intent";
+import { useUserWallet } from "@/components/user-wallet-provider";
 import { formatPaymentAmount, payForSlot, type Currency } from "@/lib/payments";
 
 type SlotBookingButtonProps = {
@@ -24,17 +22,20 @@ export function SlotBookingButton({
   currency,
   scheduledEndTime,
 }: SlotBookingButtonProps) {
-  const { ready, authenticated, login, connectWallet } = usePrivy();
-  const { wallets } = useWallets();
-  const { signAndSendTransaction } = useSignAndSendTransaction();
+  const {
+    ready,
+    connected,
+    wallet,
+    walletAddress,
+    openConnectModal,
+    signAndSendTransaction,
+  } = useUserWallet();
   const [booking, setBooking] = useState(false);
   const [kiraLoading, setKiraLoading] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const solanaWallet = wallets[0];
-  const walletAddress = solanaWallet?.address ?? null;
-  const canBook = ready && authenticated && solanaWallet && walletAddress;
+  const canBook = ready && connected && wallet && walletAddress;
   const canBookWithPusd = currency !== "PUSD";
 
   useEffect(() => {
@@ -54,16 +55,16 @@ export function SlotBookingButton({
     setError(null);
 
     if (!ready) return;
-    if (!authenticated) {
-      const msg = "Sign in to book this slot.";
+    try {
+      openConnectModal();
+    } catch (connectError) {
+      const msg =
+        connectError instanceof Error
+          ? connectError.message
+          : "Wallet connection failed.";
       setError(msg);
       toast.error(msg);
-      setAuthIntent("user");
-      login();
-      return;
     }
-
-    connectWallet();
   }
 
   function handleBookClick() {
@@ -80,7 +81,7 @@ export function SlotBookingButton({
   async function handleCryptoPayment(paymentCurrency: Currency) {
     setError(null);
 
-    if (!canBook) {
+    if (!canBook || !wallet || !walletAddress) {
       const msg = "Connect your wallet before booking.";
       setError(msg);
       toast.error(msg);
@@ -90,7 +91,7 @@ export function SlotBookingButton({
     setBooking(true);
     try {
       const txSignature = await payForSlot({
-        wallet: solanaWallet,
+        wallet,
         signAndSendTransaction,
         payerWallet: walletAddress,
         creatorWallet,
@@ -200,9 +201,7 @@ export function SlotBookingButton({
             ? "Loading..."
             : booking
               ? "Booking..."
-              : !authenticated
-                ? "Sign in to book"
-                : !walletAddress
+              : !connected
                   ? "Connect wallet to book"
                   : "Book"}
         </button>
