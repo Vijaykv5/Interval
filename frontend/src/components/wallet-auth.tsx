@@ -49,7 +49,6 @@ export function WalletAuth({
     ready: userWalletReady,
     connected: userWalletConnected,
     walletAddress: userWalletAddress,
-    walletLabel,
     openConnectModal,
     disconnect: disconnectUserWallet,
   } = useUserWallet();
@@ -460,7 +459,7 @@ export function WalletAuth({
 
   if (userWalletConnected) {
     return renderDropdown({
-      label: walletLabel ? `${walletLabel} · ${shortenAddress(userWalletAddress ?? "")}` : shortenAddress(userWalletAddress ?? ""),
+      label: shortenAddress(userWalletAddress ?? ""),
       address: userWalletAddress,
       logoutLabel: "Disconnect wallet",
       onLogout: () => {

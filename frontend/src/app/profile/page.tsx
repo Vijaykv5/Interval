@@ -119,7 +119,6 @@ export default function ProfilePage() {
     walletAddress,
     openConnectModal,
     signAndSendTransaction,
-    walletLabel,
   } = useUserWallet();
   const { network } = useSolanaNetwork();
   const [balances, setBalances] = useState<BalanceData | null>(null);
@@ -139,7 +138,7 @@ export default function ProfilePage() {
   const [authSettled, setAuthSettled] = useState(false);
   const pusdProvisionInFlightRef = useRef<string | null>(null);
 
-  const profileName = walletLabel ? `${walletLabel} user` : "Interval User";
+  const profileName = "Interval User";
 
   const loadBalances = useCallback(async () => {
     if (!walletAddress) return;
@@ -271,7 +270,7 @@ export default function ProfilePage() {
 
   const bookings = bookingSummary?.bookings ?? [];
   const bookingCount = bookings.length;
-  const rewardsPoints = bookingCount * 25;
+  const rewardsPoints = bookingCount * 40;
   const bookedNow = searchParams.get("booked") === "1";
   const selectedBookingId = searchParams.get("booking");
   const kiraPayError = searchParams.get("kirapay") === "error";
@@ -437,14 +436,10 @@ export default function ProfilePage() {
                     {getProfileInitial(walletAddress)}
                   </div>
                   <div>
-                    <p
-                      className="text-3xl font-semibold uppercase text-white sm:text-4xl"
-                      style={{ fontFamily: "var(--font-archivo-condensed), sans-serif" }}
-                    >
-                      {profileName}
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-3 text-white/48">
-                      <span className="font-mono text-lg">{shortenAddress(walletAddress ?? "")}</span>
+                    <div className="flex flex-wrap items-center gap-3 text-white/60">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#ffd28e]/74">
+                        Connected wallet
+                      </span>
                       <button
                         type="button"
                         onClick={copyWallet}
@@ -454,6 +449,18 @@ export default function ProfilePage() {
                         <AnimatedStatusIcon copied={copied === "wallet"} />
                       </button>
                     </div>
+                    <p className="mt-3 break-all font-mono text-[1.15rem] leading-7 text-white sm:text-[1.35rem]">
+                      {walletAddress ?? ""}
+                    </p>
+                    <p
+                      className="mt-5 text-3xl font-semibold uppercase text-white sm:text-4xl"
+                      style={{ fontFamily: "var(--font-archivo-condensed), sans-serif" }}
+                    >
+                      {profileName}
+                    </p>
+                    <p className="mt-2 text-sm text-white/48">
+                      Track your sessions, wallet balances, and reward progress from one place.
+                    </p>
                     <div className="mt-6 flex flex-wrap gap-3">
                       <BalancePill
                         label="SOL"
@@ -482,6 +489,29 @@ export default function ProfilePage() {
                   >
                     Withdraw
                   </button>
+                </div>
+              </div>
+
+              <div className="mt-8 rounded-[1.75rem] border border-[#ffd28e]/20 bg-[linear-gradient(135deg,rgba(255,210,142,0.12),rgba(255,210,142,0.03)_42%,rgba(18,18,18,0.94))] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.18)]">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="max-w-2xl">
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#ffd28e]/74">
+                      Rewards boost
+                    </p>
+                    <h3 className="mt-3 text-xl font-semibold text-white sm:text-2xl">
+                      Pay with PUSD and earn 40 reward points per booking
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-white/62 sm:text-[15px]">
+                      Stablecoin bookings stack points faster and keep your checkout flow simple. Every PUSD payment adds a cleaner reward bonus to your profile.
+                    </p>
+                  </div>
+                  <div className="rounded-[1.35rem] border border-white/10 bg-black/20 px-5 py-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/42">
+                      Bonus rate
+                    </p>
+                    <p className="mt-2 text-3xl font-semibold text-[#ffd28e]">+40 pts</p>
+                    <p className="mt-1 text-sm text-white/48">for each PUSD booking</p>
+                  </div>
                 </div>
               </div>
 
@@ -667,14 +697,15 @@ export default function ProfilePage() {
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">Rewards balance</p>
                       <p className="mt-4 text-4xl font-semibold text-white">{rewardsPoints}</p>
                       <p className="mt-2 text-sm text-white/48">
-                        Earned from booked sessions on Interval.
+                        Based on 40 reward points for each booking tracked on Interval.
                       </p>
                     </div>
-                    <div className="rounded-[1.5rem] bg-[#101010] p-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">How rewards work</p>
-                      <div className="mt-4 space-y-3 text-sm text-white/48">
-                        <p>Every completed booking adds reward points to your account.</p>
-                        <p>More reward features and perks can live here later without changing this layout.</p>
+                    <div className="rounded-[1.5rem] border border-[#ffd28e]/14 bg-[linear-gradient(180deg,rgba(255,210,142,0.08),rgba(16,16,16,0.96))] p-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#ffd28e]/72">How rewards work</p>
+                      <div className="mt-4 space-y-3 text-sm text-white/58">
+                        <p>PUSD payments are highlighted as the fastest way to build your reward balance.</p>
+                        <p>Each eligible booking adds 40 points, so repeat sessions turn into a visible loyalty score quickly.</p>
+                        <p>More perks can plug into this same rewards rail later without changing the profile flow.</p>
                       </div>
                     </div>
                   </div>
