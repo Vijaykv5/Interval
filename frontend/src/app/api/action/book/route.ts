@@ -17,7 +17,6 @@ import {
   createTransferInstruction,
   getAccount,
   getAssociatedTokenAddress,
-  TOKEN_2022_PROGRAM_ID,
 } from "@solana/spl-token";
 import { MEMO_PROGRAM_ID } from "@solana/actions";
 import { prisma } from "@/lib/prisma";
@@ -25,10 +24,10 @@ import { ACTION_ICON_FALLBACK } from "@/lib/constants";
 import { sendBookingConfirmationEmail } from "@/lib/email";
 import { buildBookSlotInstruction } from "@/lib/interval-program";
 import {
-  getPusdMintPublicKey,
-  PUSD_DECIMALS,
+  getDirectPayTokenDefinition,
   getSelectedSolanaNetwork,
   getSolanaRpcUrl,
+  type SupportedTokenCurrency,
 } from "@/lib/solana-config";
 
 export const dynamic = "force-dynamic";
@@ -270,12 +269,19 @@ export async function POST(req: Request) {
 
     const network = getSelectedSolanaNetwork(req.headers.get("cookie"));
     const connection = new Connection(getSolanaRpcUrl(network));
-    const pusdMint = getPusdMintPublicKey(network);
     const creatorWallet = new PublicKey(slot.creator.wallet);
     const amountBaseUnits =
       slot.currency === "SOL"
         ? BigInt(Math.floor(slot.price * LAMPORTS_PER_SOL))
-        : BigInt(Math.round(slot.price * 10 ** PUSD_DECIMALS));
+        : (() => {
+            const tokenDefinition = getDirectPayTokenDefinition(
+              slot.currency as SupportedTokenCurrency,
+              network
+            );
+            return tokenDefinition
+              ? BigInt(Math.round(slot.price * 10 ** tokenDefinition.decimals))
+              : BigInt(0);
+          })();
 
     if (amountBaseUnits <= BigInt(0)) {
       return Response.json(
@@ -302,55 +308,60 @@ export async function POST(req: Request) {
 
       paymentIxs.push(instruction);
     } else {
-      if (!pusdMint) {
+      const tokenDefinition = getDirectPayTokenDefinition(
+        slot.currency as SupportedTokenCurrency,
+        network
+      );
+      if (!tokenDefinition) {
         return Response.json(
-          { message: "PUSD is not configured for the current Solana network." } satisfies ActionError,
+          { message: `${slot.currency} is not configured for the current Solana network.` } satisfies ActionError,
           { status: 400, headers }
         );
       }
+      const mint = new PublicKey(tokenDefinition.mintAddress);
 
       const userAta = await getAssociatedTokenAddress(
-        pusdMint,
+        mint,
         account,
         false,
-        TOKEN_2022_PROGRAM_ID
+        tokenDefinition.tokenProgram
       );
       const creatorAta = await getAssociatedTokenAddress(
-        pusdMint,
+        mint,
         creatorWallet,
         false,
-        TOKEN_2022_PROGRAM_ID
+        tokenDefinition.tokenProgram
       );
       try {
         const userAccount = await getAccount(
           connection,
           userAta,
           "confirmed",
-          TOKEN_2022_PROGRAM_ID
+          tokenDefinition.tokenProgram
         );
         if (userAccount.amount < amountBaseUnits) {
           return Response.json(
-            { message: `Insufficient PUSD. You need ${slot.price} PUSD.` } satisfies ActionError,
+            { message: `Insufficient ${slot.currency}. You need ${slot.price} ${slot.currency}.` } satisfies ActionError,
             { status: 400, headers }
           );
         }
       } catch {
         return Response.json(
-          { message: "You do not have a PUSD token account for this wallet." } satisfies ActionError,
+          { message: `You do not have a ${slot.currency} token account for this wallet.` } satisfies ActionError,
           { status: 400, headers }
         );
       }
 
       try {
-        await getAccount(connection, creatorAta, "confirmed", TOKEN_2022_PROGRAM_ID);
+        await getAccount(connection, creatorAta, "confirmed", tokenDefinition.tokenProgram);
       } catch {
         paymentIxs.push(
           createAssociatedTokenAccountInstruction(
             account,
             creatorAta,
             creatorWallet,
-            pusdMint,
-            TOKEN_2022_PROGRAM_ID
+            mint,
+            tokenDefinition.tokenProgram
           )
         );
       }
@@ -362,7 +373,7 @@ export async function POST(req: Request) {
           account,
           amountBaseUnits,
           [],
-          TOKEN_2022_PROGRAM_ID
+          tokenDefinition.tokenProgram
         )
       );
     }

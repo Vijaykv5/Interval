@@ -1,6 +1,7 @@
 import { getAssociatedTokenAddress, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import {
   getPusdMintPublicKey,
   PUSD_DECIMALS,
@@ -58,6 +59,10 @@ export async function GET(req: Request) {
       pusdBaseUnits = totalBaseUnits.toString();
     }
 
+    const creditBalance = await prisma.userCreditBalance.findUnique({
+      where: { wallet },
+    });
+
     return NextResponse.json({
       wallet,
       network,
@@ -67,6 +72,8 @@ export async function GET(req: Request) {
       pusdBaseUnits,
       pusdTokenAccountExists,
       pusdAta,
+      bookingCreditsUsd: (creditBalance?.creditBalanceCents ?? 0) / 100,
+      bookingCreditsCents: creditBalance?.creditBalanceCents ?? 0,
     });
   } catch (err) {
     console.error("User balances error:", err);

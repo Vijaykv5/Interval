@@ -1,3 +1,4 @@
+import { Currency } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
@@ -5,7 +6,12 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { wallet, startTime, endTime, price } = body;
-    const currency = body.currency === "PUSD" ? "PUSD" : "SOL";
+    const currency =
+      body.currency === Currency.PUSD
+        ? Currency.PUSD
+        : body.currency === Currency.USDC
+          ? Currency.USDC
+          : Currency.SOL;
 
     if (!wallet || typeof wallet !== "string" || wallet.length === 0) {
       return NextResponse.json(

@@ -14,7 +14,7 @@ export type BookingConfirmationParams = {
   joinUrl: string;
   meetLink: string | null;
   amount: number;
-  currency: "SOL" | "PUSD";
+  currency: "SOL" | "PUSD" | "USDC";
 };
 
 export async function sendBookingConfirmationEmail(

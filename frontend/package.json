@@ -28,6 +28,8 @@
     "@solana/wallet-adapter-wallets": "^0.19.38",
     "bs58": "^6.0.0",
     "cloudinary": "^2.9.0",
+    "dodopayments": "^2.31.1",
+    "dodopayments-checkout": "^1.8.0",
     "next": "16.1.6",
     "prisma": "^7.4.1",
     "react": "19.2.3",

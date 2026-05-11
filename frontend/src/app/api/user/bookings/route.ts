@@ -47,7 +47,7 @@ export async function GET(req: Request) {
         acc[booking.currency] += booking.amount;
         return acc;
       },
-      { SOL: 0, PUSD: 0 }
+      { SOL: 0, PUSD: 0, USDC: 0 }
     );
 
     return NextResponse.json({

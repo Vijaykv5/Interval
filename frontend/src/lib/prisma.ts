@@ -35,7 +35,11 @@ function createPrismaClient() {
 
 function hasExpectedModels(client: PrismaClient | undefined) {
   if (!client) return false;
-  return "kiraPayment" in (client as object);
+  return (
+    "kiraPayment" in (client as object) &&
+    "dodoTopup" in (client as object) &&
+    "userCreditBalance" in (client as object)
+  );
 }
 
 export const prisma =

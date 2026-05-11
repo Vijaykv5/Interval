@@ -35,7 +35,7 @@ type Slot = {
   startTime: string;
   endTime: string;
   price: number;
-  currency: "SOL" | "PUSD";
+  currency: "SOL" | "PUSD" | "USDC";
   status: string;
   meetLink?: string | null;
 };
@@ -59,7 +59,7 @@ type Booking = {
   payerWallet: string;
   amountSol: number;
   amount: number;
-  currency: "SOL" | "PUSD";
+  currency: "SOL" | "PUSD" | "USDC";
   txSignature: string | null;
   status: string;
   name: string | null;
@@ -72,7 +72,7 @@ type Booking = {
 type DashboardData = {
   upcomingMeetings: Slot[];
   earnings: number;
-  earningsByCurrency: { SOL: number; PUSD: number };
+  earningsByCurrency: { SOL: number; PUSD: number; USDC: number };
   totalBookings: number;
   mySlots: Slot[];
   bookings: Booking[];
@@ -117,7 +117,7 @@ function formatMeetingTime(iso: string) {
   });
 }
 
-function formatAmount(amount: number, currency: "SOL" | "PUSD") {
+function formatAmount(amount: number, currency: "SOL" | "PUSD" | "USDC") {
   return `${Number(amount).toFixed(currency === "SOL" ? 4 : 2)} ${currency}`;
 }
 
@@ -191,7 +191,7 @@ export default function Dashboard() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [price, setPrice] = useState("");
-  const [currency, setCurrency] = useState<"SOL" | "PUSD">("SOL");
+  const [currency, setCurrency] = useState<"SOL" | "PUSD" | "USDC">("SOL");
   const [createError, setCreateError] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -360,7 +360,7 @@ export default function Dashboard() {
       setDashboard({
         upcomingMeetings: [],
         earnings: 0,
-        earningsByCurrency: { SOL: 0, PUSD: 0 },
+        earningsByCurrency: { SOL: 0, PUSD: 0, USDC: 0 },
         totalBookings: 0,
         mySlots: [],
         bookings: [],
@@ -380,7 +380,7 @@ export default function Dashboard() {
             setDashboard({
               upcomingMeetings: [],
               earnings: 0,
-              earningsByCurrency: { SOL: 0, PUSD: 0 },
+              earningsByCurrency: { SOL: 0, PUSD: 0, USDC: 0 },
               totalBookings: 0,
               mySlots: [],
               bookings: [],
@@ -409,7 +409,7 @@ export default function Dashboard() {
           setDashboard({
             upcomingMeetings: [],
             earnings: 0,
-            earningsByCurrency: { SOL: 0, PUSD: 0 },
+            earningsByCurrency: { SOL: 0, PUSD: 0, USDC: 0 },
             totalBookings: 0,
             mySlots: [],
             bookings: [],
@@ -421,7 +421,7 @@ export default function Dashboard() {
           setDashboard({
             upcomingMeetings: [],
             earnings: 0,
-            earningsByCurrency: { SOL: 0, PUSD: 0 },
+            earningsByCurrency: { SOL: 0, PUSD: 0, USDC: 0 },
             totalBookings: 0,
             mySlots: [],
             bookings: [],
@@ -604,12 +604,12 @@ export default function Dashboard() {
   const upcomingSlots = mySlots.filter((slot) => new Date(slot.endTime).getTime() >= Date.now());
   const previousSlots = mySlots.filter((slot) => new Date(slot.endTime).getTime() < Date.now());
   const earnings = dashboard?.earnings ?? 0;
-  const earningsByCurrency = dashboard?.earningsByCurrency ?? { SOL: earnings, PUSD: 0 };
+  const earningsByCurrency = dashboard?.earningsByCurrency ?? { SOL: earnings, PUSD: 0, USDC: 0 };
   const totalBookings = dashboard?.totalBookings ?? 0;
   const walletBalance = dashboard?.walletBalance ?? null;
   const treasurySolBalance = treasuryBalances?.sol ?? walletBalance ?? null;
   const treasuryPusdBalance = treasuryBalances?.pusd ?? 0;
-  const totalEarningsDisplay = earningsByCurrency.SOL + earningsByCurrency.PUSD;
+  const totalEarningsDisplay = earningsByCurrency.SOL + earningsByCurrency.PUSD + earningsByCurrency.USDC;
   const fundedTreasuryAssets = [treasurySolBalance ?? 0, treasuryPusdBalance].filter((amount) => amount > 0).length;
   const hasTreasuryCapital = (treasurySolBalance ?? 0) > 0 || treasuryPusdBalance > 0;
   const hasLpPositions = lpPositionsSummary.count > 0;
@@ -870,7 +870,7 @@ export default function Dashboard() {
                       {earningsByCurrency.SOL.toFixed(4)} <span className="text-lg font-semibold" style={{ color: "#ffd28e" }}>SOL</span>
                     </p>
                     <p className="text-xs text-white/45 mt-1">
-                      {earningsByCurrency.PUSD.toFixed(2)} PUSD · {totalBookings} booking{totalBookings !== 1 ? "s" : ""}
+                      {earningsByCurrency.PUSD.toFixed(2)} PUSD · {earningsByCurrency.USDC.toFixed(2)} USDC · {totalBookings} booking{totalBookings !== 1 ? "s" : ""}
                     </p>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-6 overflow-hidden relative group hover:border-white/15 transition-colors">
@@ -965,7 +965,7 @@ export default function Dashboard() {
                       {totalEarningsDisplay.toFixed(2)}
                     </p>
                     <p className="mt-2 text-xs text-white/45">
-                      {earningsByCurrency.SOL.toFixed(4)} SOL and {earningsByCurrency.PUSD.toFixed(2)} PUSD earned across {totalBookings} booking{totalBookings !== 1 ? "s" : ""}.
+                      {earningsByCurrency.SOL.toFixed(4)} SOL, {earningsByCurrency.PUSD.toFixed(2)} PUSD, and {earningsByCurrency.USDC.toFixed(2)} USDC earned across {totalBookings} booking{totalBookings !== 1 ? "s" : ""}.
                     </p>
                   </div>
 
@@ -1432,11 +1432,12 @@ export default function Dashboard() {
                         <select
                           id="currency"
                           value={currency}
-                          onChange={(e) => setCurrency(e.target.value as "SOL" | "PUSD")}
+                          onChange={(e) => setCurrency(e.target.value as "SOL" | "PUSD" | "USDC")}
                           className="w-full rounded-xl border border-white/20 bg-black/40 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#ffd28e]/50 focus:border-[#ffd28e]/40 transition-colors [color-scheme:dark]"
                         >
                           <option value="SOL">SOL</option>
                           <option value="PUSD">PUSD</option>
+                          <option value="USDC">USDC</option>
                         </select>
                       </div>
                     </div>

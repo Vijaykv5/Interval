@@ -3,7 +3,6 @@
 import {
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
-  TOKEN_2022_PROGRAM_ID,
 } from "@solana/spl-token";
 import {
   PublicKey,
@@ -12,17 +11,17 @@ import {
 import bs58 from "bs58";
 import { payForSlotWithIntervalEscrow } from "@/lib/interval-program";
 import {
-  getPusdMintPublicKey,
-  PUSD_DECIMALS,
+  getDirectPayTokenDefinition,
   getSelectedSolanaNetwork,
   getSelectedSolanaWalletChain,
+  type SupportedTokenCurrency,
 } from "@/lib/solana-config";
 import type {
   IntervalSignAndSendTransaction,
   IntervalSolanaWallet,
 } from "@/lib/solana-wallet";
 
-export type Currency = "SOL" | "PUSD";
+export type Currency = "SOL" | "PUSD" | "USDC";
 
 type PayForSlotParams<TWallet extends IntervalSolanaWallet> = {
   wallet: TWallet;
@@ -102,7 +101,7 @@ export async function payForSlot<TWallet extends IntervalSolanaWallet>({
       payerWallet,
       creatorWallet,
       currency,
-      amount: currency === "PUSD" ? price : undefined,
+      amount: currency === "SOL" ? undefined : price,
     }),
   });
 
@@ -133,34 +132,37 @@ export async function payForSlot<TWallet extends IntervalSolanaWallet>({
     return result.signature;
   } else {
     const network = getSelectedSolanaNetwork();
-    const pusdMint = getPusdMintPublicKey(network);
+    const tokenDefinition = getDirectPayTokenDefinition(
+      currency as SupportedTokenCurrency,
+      network
+    );
 
-    if (!pusdMint) {
+    if (!tokenDefinition) {
       const envSuffix = network === "mainnet-beta" ? "MAINNET" : "DEVNET";
       throw new Error(
-        `PUSD is not configured for ${network}. Set NEXT_PUBLIC_PUSD_MINT_${envSuffix} and PUSD_MINT_${envSuffix} in frontend/.env.local, then restart the app.`
+        `${currency} is not configured for ${network}. Set NEXT_PUBLIC_${currency}_MINT_${envSuffix} and ${currency}_MINT_${envSuffix} in frontend/.env.local, then restart the app.`
       );
     }
 
     const transaction = new Transaction();
-    const amount = toBaseUnits(price, PUSD_DECIMALS);
+    const amount = toBaseUnits(price, tokenDefinition.decimals);
     if ("lamports" in preflight) {
-      throw new Error("Could not load PUSD account info. Please try again.");
+      throw new Error(`Could not load ${currency} account info. Please try again.`);
     }
 
     const userSourceTokenAccount = new PublicKey(preflight.userSourceTokenAccount);
     const creatorAta = new PublicKey(preflight.creatorAta);
 
     if (!preflight.userTokenAccountExists) {
-      throw new Error("You do not have a PUSD token account for this wallet.");
+      throw new Error(`You do not have a ${currency} token account for this wallet.`);
     }
 
     if (BigInt(preflight.userTokenTotalAmount) < amount) {
-      throw new Error(`Insufficient PUSD. You need ${formatPaymentAmount(price, "PUSD")}.`);
+      throw new Error(`Insufficient ${currency}. You need ${formatPaymentAmount(price, currency)}.`);
     }
 
     if (BigInt(preflight.userSourceTokenAmount) < amount) {
-      throw new Error("Your PUSD balance is spread across multiple token accounts. Please consolidate it into one account and try again.");
+      throw new Error(`Your ${currency} balance is spread across multiple token accounts. Please consolidate it into one account and try again.`);
     }
 
     if (!preflight.creatorTokenAccountExists) {
@@ -169,8 +171,8 @@ export async function payForSlot<TWallet extends IntervalSolanaWallet>({
           payer,
           creatorAta,
           creator,
-          pusdMint,
-          TOKEN_2022_PROGRAM_ID
+          new PublicKey(tokenDefinition.mintAddress),
+          tokenDefinition.tokenProgram
         )
       );
     }
@@ -182,7 +184,7 @@ export async function payForSlot<TWallet extends IntervalSolanaWallet>({
         payer,
         amount,
         [],
-        TOKEN_2022_PROGRAM_ID
+        tokenDefinition.tokenProgram
       )
     );
 

@@ -8,7 +8,7 @@ type CreateKiraLinkRequest = {
   creatorWallet?: string;
   payerWallet?: string;
   price?: number;
-  currency?: "SOL" | "PUSD";
+  currency?: "SOL" | "PUSD" | "USDC";
 };
 
 type KiraGenerateResponse = {
@@ -31,9 +31,17 @@ function getKiraApiKey() {
 }
 
 function getBaseUrl(req: Request) {
+  const requestOrigin = new URL(req.url).origin;
+  if (
+    requestOrigin.includes("localhost") ||
+    requestOrigin.includes("127.0.0.1")
+  ) {
+    return requestOrigin;
+  }
+
   return (
     process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ||
-    new URL(req.url).origin
+    requestOrigin
   );
 }
 

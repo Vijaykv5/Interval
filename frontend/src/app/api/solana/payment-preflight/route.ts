@@ -1,18 +1,22 @@
 import {
   getAccount,
   getAssociatedTokenAddress,
-  TOKEN_2022_PROGRAM_ID,
   TokenAccountNotFoundError,
   TokenInvalidAccountOwnerError,
 } from "@solana/spl-token";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { NextResponse } from "next/server";
-import { getPusdMintPublicKey, getSelectedSolanaNetwork, getSolanaRpcUrl, PUSD_DECIMALS } from "@/lib/solana-config";
+import {
+  getDirectPayTokenDefinition,
+  getSelectedSolanaNetwork,
+  getSolanaRpcUrl,
+  type SupportedTokenCurrency,
+} from "@/lib/solana-config";
 
 type PreflightRequest = {
   payerWallet?: string;
   creatorWallet?: string;
-  currency?: "SOL" | "PUSD";
+  currency?: "SOL" | "PUSD" | "USDC";
   amount?: number;
 };
 
@@ -44,26 +48,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ lamports });
     }
 
-    const pusdMint = getPusdMintPublicKey(network);
+    const tokenDefinition = getDirectPayTokenDefinition(
+      body.currency as SupportedTokenCurrency,
+      network
+    );
 
-    if (!pusdMint) {
+    if (!tokenDefinition) {
       return NextResponse.json(
-        { error: "PUSD is not configured for the current Solana network" },
+        { error: `${body.currency} is not configured for the current Solana network` },
         { status: 400 }
       );
     }
 
     const userAta = await getAssociatedTokenAddress(
-      pusdMint,
+      new PublicKey(tokenDefinition.mintAddress),
       payer,
       false,
-      TOKEN_2022_PROGRAM_ID
+      tokenDefinition.tokenProgram
     );
     const creatorAta = await getAssociatedTokenAddress(
-      pusdMint,
+      new PublicKey(tokenDefinition.mintAddress),
       creator,
       false,
-      TOKEN_2022_PROGRAM_ID
+      tokenDefinition.tokenProgram
     );
 
     let userTokenAmount = "0";
@@ -75,7 +82,7 @@ export async function POST(req: Request) {
 
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
       payer,
-      { mint: pusdMint },
+      { mint: new PublicKey(tokenDefinition.mintAddress) },
       "confirmed"
     );
 
@@ -84,7 +91,7 @@ export async function POST(req: Request) {
     let richestAccountAmount = BigInt(0);
     const requestedAmount =
       typeof body.amount === "number" && Number.isFinite(body.amount) && body.amount > 0
-        ? BigInt(Math.round(body.amount * 10 ** PUSD_DECIMALS))
+        ? BigInt(Math.round(body.amount * 10 ** tokenDefinition.decimals))
         : null;
     let sufficientAccountAddress: string | null = null;
     let sufficientAccountAmount = BigInt(0);
@@ -125,7 +132,7 @@ export async function POST(req: Request) {
           connection,
           userAta,
           "confirmed",
-          TOKEN_2022_PROGRAM_ID
+          tokenDefinition.tokenProgram
         );
         userTokenAmount = userAccount.amount.toString();
         userTokenTotalAmount = userAccount.amount.toString();
@@ -137,7 +144,7 @@ export async function POST(req: Request) {
     }
 
     try {
-      await getAccount(connection, creatorAta, "confirmed", TOKEN_2022_PROGRAM_ID);
+      await getAccount(connection, creatorAta, "confirmed", tokenDefinition.tokenProgram);
       creatorTokenAccountExists = true;
     } catch (err) {
       if (!isTokenAccountMissing(err)) throw err;

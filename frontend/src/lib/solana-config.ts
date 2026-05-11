@@ -1,13 +1,16 @@
+import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { PublicKey, clusterApiUrl } from "@solana/web3.js";
 
 export type SolanaNetwork = "devnet" | "mainnet-beta";
 export type SolanaWalletChain = "solana:devnet" | "solana:mainnet";
+export type SupportedTokenCurrency = "PUSD" | "USDC";
 export type KnownTokenDefinition = {
   symbol: string;
   name: string;
   decimals: number;
   mintAddress: string;
   network: SolanaNetwork;
+  tokenProgram: PublicKey;
 };
 
 export const SOLANA_NETWORK_COOKIE = "interval-network";
@@ -15,6 +18,11 @@ export const PUSD_DECIMALS = 6;
 export const PUSD_SYMBOL = "PUSD";
 export const PUSD_NAME = "PUSD";
 export const PUSD_MAINNET_MINT = "CZzgUBvxaMLwMhVSLgqJn3npmxoTo6nzMNQPAnwtHF3s";
+export const USDC_DECIMALS = 6;
+export const USDC_SYMBOL = "USDC";
+export const USDC_NAME = "USD Coin";
+export const USDC_MAINNET_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+export const USDC_DEVNET_MINT = "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr";
 
 export function parseSolanaNetwork(value: string | undefined | null): SolanaNetwork {
   const normalized = value?.trim().toLowerCase();
@@ -190,7 +198,70 @@ export function getPusdTokenDefinition(
     decimals: PUSD_DECIMALS,
     mintAddress,
     network,
+    tokenProgram: TOKEN_2022_PROGRAM_ID,
   };
+}
+
+export function getUsdcMintAddress(
+  network: SolanaNetwork = getSelectedSolanaNetwork()
+): string {
+  if (network === "mainnet-beta") {
+    return (
+      process.env.NEXT_PUBLIC_USDC_MINT_MAINNET?.trim() ??
+      process.env.USDC_MINT_MAINNET?.trim() ??
+      USDC_MAINNET_MINT
+    );
+  }
+
+  return (
+    process.env.NEXT_PUBLIC_USDC_MINT_DEVNET?.trim() ??
+    process.env.USDC_MINT_DEVNET?.trim() ??
+    USDC_DEVNET_MINT
+  );
+}
+
+export function hasConfiguredUsdcMint(
+  network: SolanaNetwork = getSelectedSolanaNetwork()
+) {
+  return getUsdcMintAddress(network).length > 0;
+}
+
+export function getUsdcMintPublicKey(
+  network: SolanaNetwork = getSelectedSolanaNetwork()
+) {
+  const mintAddress = getUsdcMintAddress(network);
+  if (!mintAddress) {
+    return null;
+  }
+
+  return new PublicKey(mintAddress);
+}
+
+export function getUsdcTokenDefinition(
+  network: SolanaNetwork = getSelectedSolanaNetwork()
+): KnownTokenDefinition | null {
+  const mintAddress = getUsdcMintAddress(network);
+  if (!mintAddress) {
+    return null;
+  }
+
+  return {
+    symbol: USDC_SYMBOL,
+    name: USDC_NAME,
+    decimals: USDC_DECIMALS,
+    mintAddress,
+    network,
+    tokenProgram: TOKEN_PROGRAM_ID,
+  };
+}
+
+export function getDirectPayTokenDefinition(
+  currency: SupportedTokenCurrency,
+  network: SolanaNetwork = getSelectedSolanaNetwork()
+): KnownTokenDefinition | null {
+  return currency === "USDC"
+    ? getUsdcTokenDefinition(network)
+    : getPusdTokenDefinition(network);
 }
 
 export function isDevnetNetwork(network: SolanaNetwork = getSelectedSolanaNetwork()) {

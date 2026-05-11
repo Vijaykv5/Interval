@@ -1,14 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import { sendBookingConfirmationEmail } from "@/lib/email";
 import { NextResponse } from "next/server";
-import { getAssociatedTokenAddress, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { deriveBookingId, findBookingEscrowPda, INTERVAL_PROGRAM_ID } from "@/lib/interval-program";
 import {
-  getPusdMintPublicKey,
+  getDirectPayTokenDefinition,
   getSelectedSolanaNetwork,
   getSolanaRpcUrl,
-  PUSD_DECIMALS,
+  type SupportedTokenCurrency,
 } from "@/lib/solana-config";
 
 type BookingRequest = {
@@ -17,7 +17,7 @@ type BookingRequest = {
   userId?: string;
   payerWallet?: string;
   amount?: number;
-  currency?: "SOL" | "PUSD";
+  currency?: "SOL" | "PUSD" | "USDC";
   txSignature?: string;
   name?: string;
   email?: string;
@@ -79,7 +79,7 @@ function readTokenTransfer(instruction: unknown) {
   return { source, destination, amount };
 }
 
-async function isOwnedPusdTokenAccount({
+async function isOwnedTokenAccount({
   connection,
   tokenAccount,
   expectedOwner,
@@ -121,7 +121,7 @@ async function verifyBookingPayment({
   slotId: string;
   payerWallet: string;
   creatorWallet: string;
-  currency: "SOL" | "PUSD";
+  currency: "SOL" | "PUSD" | "USDC";
   amount: number;
   txSignature: string;
 }) {
@@ -155,30 +155,33 @@ async function verifyBookingPayment({
     return;
   }
 
-  const pusdMint = getPusdMintPublicKey(network);
-  if (!pusdMint) {
-    throw new Error("PUSD is not configured for the current Solana network.");
+  const tokenDefinition = getDirectPayTokenDefinition(
+    currency as SupportedTokenCurrency,
+    network
+  );
+  if (!tokenDefinition) {
+    throw new Error(`${currency} is not configured for the current Solana network.`);
   }
 
   const payer = new PublicKey(payerWallet);
   const creator = new PublicKey(creatorWallet);
   const expectedSource = (
     await getAssociatedTokenAddress(
-      pusdMint,
+      new PublicKey(tokenDefinition.mintAddress),
       payer,
       false,
-      TOKEN_2022_PROGRAM_ID
+      tokenDefinition.tokenProgram
     )
   ).toBase58();
   const expectedDestination = (
     await getAssociatedTokenAddress(
-      pusdMint,
+      new PublicKey(tokenDefinition.mintAddress),
       creator,
       false,
-      TOKEN_2022_PROGRAM_ID
+      tokenDefinition.tokenProgram
     )
   ).toBase58();
-  const expectedAmount = toBaseUnits(amount, PUSD_DECIMALS);
+  const expectedAmount = toBaseUnits(amount, tokenDefinition.decimals);
   const possibleTransfers = tx.transaction.message.instructions
     .map((instruction) => readTokenTransfer(instruction))
     .filter((transfer): transfer is NonNullable<ReturnType<typeof readTokenTransfer>> => Boolean(transfer))
@@ -192,11 +195,11 @@ async function verifyBookingPayment({
   for (const transfer of possibleTransfers) {
     if (
       transfer.source === expectedSource ||
-      (await isOwnedPusdTokenAccount({
+      (await isOwnedTokenAccount({
         connection,
         tokenAccount: transfer.source,
         expectedOwner: payerWallet,
-        expectedMint: pusdMint.toBase58(),
+        expectedMint: tokenDefinition.mintAddress,
       }))
     ) {
       hasMatchingTransfer = true;
@@ -205,7 +208,7 @@ async function verifyBookingPayment({
   }
 
   if (!hasMatchingTransfer) {
-    throw new Error("PUSD transfer to the creator wallet could not be verified.");
+    throw new Error(`${currency} transfer to the creator wallet could not be verified.`);
   }
 }
 
@@ -259,7 +262,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (currency !== slot.currency && currency !== "PUSD") {
+    if (currency !== slot.currency) {
       return NextResponse.json(
         { error: "Booking currency is not supported for this slot" },
         { status: 400 }

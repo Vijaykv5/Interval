@@ -7,7 +7,7 @@ import { SiteNav } from "@/components/site-nav";
 type SlotOption = {
   id: string;
   price: number;
-  currency: "SOL" | "PUSD";
+  currency: "SOL" | "PUSD" | "USDC";
   startTime: string;
   endTime: string;
 };
@@ -24,7 +24,7 @@ type Creator = {
   launchedTokenSymbol?: string | null;
   launchedTokenUrl?: string | null;
   launchedTokenAt?: string | null;
-  firstAvailableSlot: { id: string; price: number; currency: "SOL" | "PUSD" } | null;
+  firstAvailableSlot: { id: string; price: number; currency: "SOL" | "PUSD" | "USDC" } | null;
   availableSlots: SlotOption[];
 };
 

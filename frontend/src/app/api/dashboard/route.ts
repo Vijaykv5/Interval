@@ -126,7 +126,7 @@ export async function GET(req: Request) {
         ...acc,
         [row.currency]: row._sum.amount ?? 0,
       }),
-      { SOL: 0, PUSD: 0 }
+      { SOL: 0, PUSD: 0, USDC: 0 }
     );
 
     return NextResponse.json({

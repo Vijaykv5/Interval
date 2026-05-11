@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DodoPayments } from "dodopayments-checkout";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -8,6 +9,7 @@ import { LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from "@solana
 import { useSolanaNetwork } from "@/components/network-provider";
 import { SiteNav } from "@/components/site-nav";
 import { useUserWallet } from "@/components/user-wallet-provider";
+import { DODO_TOPUP_PACKS, type DodoTopupPack } from "@/lib/dodo-topup-packs";
 import { ensurePusdTokenAccount } from "@/lib/pusd";
 import { getSelectedSolanaWalletChain, hasConfiguredPusdMint } from "@/lib/solana-config";
 
@@ -16,6 +18,8 @@ type BalanceData = {
   network: string;
   sol: number;
   pusd: number;
+  bookingCreditsUsd: number;
+  bookingCreditsCents: number;
   pusdTokenAccountExists: boolean;
   pusdAta: string;
 };
@@ -23,7 +27,7 @@ type BalanceData = {
 type UserBooking = {
   id: string;
   amount: number;
-  currency: "SOL" | "PUSD";
+  currency: "SOL" | "PUSD" | "USDC";
   status: string;
   name: string | null;
   callFor: string | null;
@@ -50,6 +54,7 @@ type BookingSummaryData = {
   totalSpent: {
     SOL: number;
     PUSD: number;
+    USDC: number;
   };
 };
 
@@ -70,8 +75,15 @@ function formatTokenAmount(amount: number, decimals: number) {
   });
 }
 
-function formatAmount(amount: number, currency: "SOL" | "PUSD") {
+function formatAmount(amount: number, currency: "SOL" | "PUSD" | "USDC") {
   return `${formatTokenAmount(amount, currency === "SOL" ? 4 : 2)} ${currency}`;
+}
+
+function formatUsdAmount(amount: number) {
+  return amount.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function formatDateLabel(value: string) {
@@ -110,6 +122,10 @@ function getPusdProvisionSessionKey(network: string, walletAddress: string) {
   return `interval:profile:pusd-ata:${network}:${walletAddress}`;
 }
 
+function getDodoTopupSessionKey(walletAddress: string) {
+  return `interval:profile:dodo-topup:${walletAddress}`;
+}
+
 export default function ProfilePage() {
   const searchParams = useSearchParams();
   const {
@@ -135,8 +151,13 @@ export default function ProfilePage() {
   const [withdrawRecipient, setWithdrawRecipient] = useState("");
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [topupLoadingPackId, setTopupLoadingPackId] = useState<string | null>(null);
+  const [topupProcessingMessage, setTopupProcessingMessage] = useState<string | null>(null);
   const [authSettled, setAuthSettled] = useState(false);
   const pusdProvisionInFlightRef = useRef<string | null>(null);
+  const activeTopupIdRef = useRef<string | null>(null);
+  const topupPollingRef = useRef<string | null>(null);
+  const dodoInitializedRef = useRef(false);
 
   const profileName = "Interval User";
 
@@ -268,6 +289,144 @@ export default function ProfilePage() {
     }
   }
 
+  const clearTopupSearchParams = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("topup");
+    url.searchParams.delete("topupId");
+    url.searchParams.delete("status");
+    url.searchParams.delete("payment_id");
+    window.history.replaceState({}, "", url.toString());
+  }, []);
+
+  const clearStoredTopup = useCallback(() => {
+    if (!walletAddress || typeof window === "undefined") return;
+    window.sessionStorage.removeItem(getDodoTopupSessionKey(walletAddress));
+  }, [walletAddress]);
+
+  const pollTopupStatus = useCallback(
+    async (topupId: string) => {
+      if (!walletAddress || topupPollingRef.current === topupId) return;
+
+      topupPollingRef.current = topupId;
+      activeTopupIdRef.current = topupId;
+      setTopupProcessingMessage("Confirming your Dodo payment and crediting your dashboard...");
+
+      try {
+        for (let attempt = 0; attempt < 25; attempt += 1) {
+          const res = await fetch(
+            `/api/dodo/topups/status?topupId=${encodeURIComponent(topupId)}&wallet=${encodeURIComponent(walletAddress)}`,
+            { cache: "no-store" }
+          );
+          const data = await res.json().catch(() => ({}));
+
+          if (res.ok) {
+            if (data.status === "succeeded") {
+              await loadBalances();
+              clearStoredTopup();
+              clearTopupSearchParams();
+              activeTopupIdRef.current = null;
+              setTopupLoadingPackId(null);
+              setTopupProcessingMessage(null);
+              setDepositModalOpen(false);
+              toast.success(`$${data.amountUsd} booking credits added.`, {
+                description: `Your new credit balance is $${data.creditBalanceUsd}.`,
+              });
+              return;
+            }
+
+            if (data.status === "failed" || data.status === "cancelled") {
+              clearStoredTopup();
+              clearTopupSearchParams();
+              activeTopupIdRef.current = null;
+              setTopupLoadingPackId(null);
+              setTopupProcessingMessage(null);
+              toast.error("Top-up did not complete. Please try again.");
+              return;
+            }
+          }
+
+          await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        }
+
+        setTopupLoadingPackId(null);
+        setTopupProcessingMessage(
+          "Payment received. Credits will appear here as soon as Dodo finishes confirming the webhook."
+        );
+      } finally {
+        topupPollingRef.current = null;
+      }
+    },
+    [clearStoredTopup, clearTopupSearchParams, loadBalances, walletAddress]
+  );
+
+  const startTopup = useCallback(
+    async (pack: DodoTopupPack) => {
+      if (!walletAddress) {
+        toast.error("Connect your wallet before topping up.");
+        return;
+      }
+
+      setTopupLoadingPackId(pack.id);
+      setTopupProcessingMessage(null);
+
+      try {
+        const res = await fetch("/api/dodo/topups/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            walletAddress,
+            packId: pack.id,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok || typeof data.checkoutUrl !== "string" || typeof data.topupId !== "string") {
+          throw new Error(data?.error ?? "Could not start the Dodo checkout.");
+        }
+
+        activeTopupIdRef.current = data.topupId;
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(getDodoTopupSessionKey(walletAddress), data.topupId);
+        }
+
+        await DodoPayments.Checkout.open({
+          checkoutUrl: data.checkoutUrl,
+          options: {
+            showSecurityBadge: true,
+            themeConfig: {
+              dark: {
+                bgPrimary: "#0D0D0D",
+                bgSecondary: "#171717",
+                borderPrimary: "#323232",
+                borderSecondary: "#909090",
+                textPrimary: "#FFFFFF",
+                textSecondary: "#A1A1AA",
+                textPlaceholder: "#71717A",
+                textError: "#F97066",
+                textSuccess: "#34D399",
+                buttonPrimary: "#FFD28E",
+                buttonPrimaryHover: "#FFC97A",
+                buttonTextPrimary: "#0D0D0D",
+                buttonSecondary: "#232323",
+                buttonSecondaryHover: "#2E2E2E",
+                buttonTextSecondary: "#FFFFFF",
+              },
+              radius: "18px",
+            },
+          },
+        });
+      } catch (error) {
+        activeTopupIdRef.current = null;
+        clearStoredTopup();
+        setTopupLoadingPackId(null);
+        setTopupProcessingMessage(null);
+        toast.error(error instanceof Error ? error.message : "Could not open Dodo checkout.");
+      }
+    },
+    [clearStoredTopup, walletAddress]
+  );
+
   const bookings = bookingSummary?.bookings ?? [];
   const bookingCount = bookings.length;
   const rewardsPoints = bookingCount * 40;
@@ -275,6 +434,8 @@ export default function ProfilePage() {
   const selectedBookingId = searchParams.get("booking");
   const kiraPayError = searchParams.get("kirapay") === "error";
   const kiraPayMessage = searchParams.get("message");
+  const dodoTopupRequested = searchParams.get("topup") === "1";
+  const dodoTopupId = searchParams.get("topupId");
   const highlightedBooking = selectedBookingId
     ? bookings.find((booking) => booking.id === selectedBookingId) ?? null
     : bookingSummary?.nextBooking ?? null;
@@ -293,6 +454,48 @@ export default function ProfilePage() {
 
     toast.error(kiraPayMessage || "KIRAPAY checkout did not complete.");
   }, [kiraPayError, kiraPayMessage]);
+
+  useEffect(() => {
+    if (dodoInitializedRef.current) return;
+
+    DodoPayments.Initialize({
+      mode: process.env.NEXT_PUBLIC_DODO_PAYMENTS_MODE === "live" ? "live" : "test",
+      displayType: "overlay",
+      onEvent: (event) => {
+        if (event.event_type === "checkout.error") {
+          setTopupLoadingPackId(null);
+          setTopupProcessingMessage(null);
+          toast.error(
+            typeof event.data?.message === "string"
+              ? event.data.message
+              : "Dodo checkout failed to load."
+          );
+        }
+
+        if (event.event_type === "checkout.closed" && activeTopupIdRef.current) {
+          void pollTopupStatus(activeTopupIdRef.current);
+        }
+      },
+    });
+
+    dodoInitializedRef.current = true;
+  }, [pollTopupStatus]);
+
+  useEffect(() => {
+    if (!walletAddress) return;
+
+    const storedTopupId =
+      typeof window !== "undefined"
+        ? window.sessionStorage.getItem(getDodoTopupSessionKey(walletAddress))
+        : null;
+    const topupId = dodoTopupRequested && dodoTopupId ? dodoTopupId : storedTopupId;
+
+    if (!topupId || topupPollingRef.current === topupId) {
+      return;
+    }
+
+    void pollTopupStatus(topupId);
+  }, [dodoTopupId, dodoTopupRequested, pollTopupStatus, walletAddress]);
 
   useEffect(() => {
     if (!ready) {
@@ -470,6 +673,10 @@ export default function ProfilePage() {
                         label="PUSD"
                         value={loadingBalances && !balances ? "..." : formatTokenAmount(balances?.pusd ?? 0, 2)}
                       />
+                      <BalancePill
+                        label="Credits"
+                        value={loadingBalances && !balances ? "..." : `$${formatUsdAmount(balances?.bookingCreditsUsd ?? 0)}`}
+                      />
                     </div>
                   </div>
                 </div>
@@ -480,7 +687,7 @@ export default function ProfilePage() {
                     onClick={() => setDepositModalOpen(true)}
                     className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-6 py-2.5 text-sm font-medium text-black transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#060606]"
                   >
-                    Deposit
+                    Top up
                   </button>
                   <button
                     type="button"
@@ -724,6 +931,16 @@ export default function ProfilePage() {
                     </div>
 
                     <div className="rounded-[1.5rem] bg-[#101010] p-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">Booking credits</p>
+                      <p className="mt-4 text-4xl font-semibold text-white">
+                        {loadingBalances && !balances ? "..." : `$${formatUsdAmount(balances?.bookingCreditsUsd ?? 0)}`}
+                      </p>
+                      <p className="mt-2 text-sm text-white/48">
+                        Card top-ups from Dodo land here and can power future booking flows.
+                      </p>
+                    </div>
+
+                    <div className="rounded-[1.5rem] bg-[#101010] p-5">
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">PUSD balance</p>
                       <p className="mt-4 text-4xl font-semibold text-white">
                         {loadingBalances && !balances ? "..." : `${formatTokenAmount(balances?.pusd ?? 0, 2)} PUSD`}
@@ -745,13 +962,59 @@ export default function ProfilePage() {
 
             {depositModalOpen && (
               <ProfileModal
-                title="Deposit SOL"
+                title="Top up booking credits"
                 onClose={() => setDepositModalOpen(false)}
               >
                 <div className="space-y-5">
                   <ModalField
-                    label="Address"
+                    label="Current credit balance"
+                    value={loadingBalances && !balances ? "..." : `$${formatUsdAmount(balances?.bookingCreditsUsd ?? 0)}`}
+                  />
+                  <div className="rounded-[1.4rem] border border-[#ffd28e]/14 bg-[linear-gradient(180deg,rgba(255,210,142,0.08),rgba(16,16,16,0.96))] p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#ffd28e]/72">Powered by Dodo Payments</p>
+                    <p className="mt-2 text-sm leading-6 text-white/60">
+                      Pay in your local currency with Dodo checkout. Once the webhook confirms payment, the same connected wallet gets credited inside your Interval dashboard.
+                    </p>
+                  </div>
+                  <div className="grid gap-3">
+                    {DODO_TOPUP_PACKS.map((pack) => {
+                      const isLoadingPack = topupLoadingPackId === pack.id;
+                      return (
+                        <div
+                          key={pack.id}
+                          className={`rounded-[1.4rem] border border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))] p-4`}
+                        >
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-lg font-semibold text-white">{pack.label}</p>
+                              <p className="mt-1 text-sm text-white/56">{pack.caption}</p>
+                              <div className="mt-3 flex flex-wrap gap-3 text-sm text-white/72">
+                                <span className="rounded-full bg-white/6 px-3 py-1.5">+${pack.creditsUsd.toFixed(2)} credits</span>
+                                <span className="rounded-full bg-white/6 px-3 py-1.5">Pay in local currency at checkout</span>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void startTopup(pack)}
+                              disabled={Boolean(topupLoadingPackId)}
+                              className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#ffd28e] px-5 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-[#ffc97a] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f0f0f]"
+                            >
+                              {isLoadingPack ? "Opening checkout..." : `Top up $${pack.creditsUsd.toFixed(2)}`}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {topupProcessingMessage ? (
+                    <div className="rounded-[1.25rem] border border-[#94f0c0]/18 bg-[#0f1713] px-4 py-3 text-sm text-[#d4ffe6]">
+                      {topupProcessingMessage}
+                    </div>
+                  ) : null}
+                  <ModalField
+                    label="Wallet receiving credits"
                     value={shortenAddress(walletAddress ?? "")}
+                    mono
                     trailingAction={
                       walletAddress ? (
                         <button
@@ -765,17 +1028,13 @@ export default function ProfilePage() {
                       ) : null
                     }
                   />
-                  <ModalField
-                    label="Balance"
-                    value={loadingBalances && !balances ? "..." : `${formatTokenAmount(balances?.sol ?? 0, 4)} SOL`}
-                  />
                   {walletAddress && (
                     <button
                       type="button"
                       onClick={() => void copyValue(walletAddress, "address")}
-                      className="w-full rounded-[1.25rem] bg-white px-5 py-4 text-base font-semibold text-black transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f0f0f]"
+                      className="w-full rounded-[1.25rem] bg-[#171717] px-5 py-4 text-base font-semibold text-white transition-colors hover:bg-[#202020] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f0f0f]"
                     >
-                      {copied === "address" ? "Address copied" : "Copy Address"}
+                      {copied === "address" ? "Wallet copied" : "Copy wallet"}
                     </button>
                   )}
                 </div>

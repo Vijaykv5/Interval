@@ -75,7 +75,36 @@ model KiraPayment {
   updatedAt      DateTime @updatedAt
 }
 
+model UserCreditBalance {
+  wallet              String   @id
+  creditBalanceCents  Int      @default(0)
+  lifetimeTopupCents  Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model DodoTopup {
+  id                String   @id @default(uuid())
+  wallet            String
+  packId            String
+  productId         String
+  checkoutSessionId String   @unique
+  paymentId         String?  @unique
+  checkoutUrl       String?
+  amountUsdCents    Int
+  status            String   @default("pending")
+  currency          String?
+  providerStatus    String?
+  metadata          Json?
+  completedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([wallet, createdAt])
+}
+
 enum Currency {
   SOL
   PUSD
+  USDC
 }
