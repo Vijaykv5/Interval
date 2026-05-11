@@ -21,6 +21,13 @@ type KiraGenerateResponse = {
   };
 };
 
+const USD_TO_INR_RATE_CACHE_MS = 6 * 60 * 60 * 1000;
+const USD_TO_INR_RATE_FALLBACK = 85;
+const SOL_TO_INR_RATE_CACHE_MS = 60 * 60 * 1000;
+const SOL_TO_INR_RATE_FALLBACK = 15_000;
+let usdToInrRateCache: { rate: number; expiresAt: number } | null = null;
+let solToInrRateCache: { rate: number; expiresAt: number } | null = null;
+
 function getKiraApiKey() {
   return (
     process.env.KIRA_PAY?.trim() ||
@@ -78,17 +85,96 @@ function getFixedOriginalPrice() {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function deriveOriginalPrice(amount: number, fiatCurrency: string) {
+async function getUsdToInrRate() {
+  const raw = process.env.KIRA_PAY_USD_TO_INR_RATE?.trim();
+  const parsed = raw ? Number(raw) : null;
+
+  if (parsed && Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  if (usdToInrRateCache && usdToInrRateCache.expiresAt > Date.now()) {
+    return usdToInrRateCache.rate;
+  }
+
+  try {
+    const res = await fetch("https://api.frankfurter.app/latest?from=USD&to=INR", {
+      next: { revalidate: USD_TO_INR_RATE_CACHE_MS / 1000 },
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      rates?: { INR?: number };
+    };
+    const rate = data.rates?.INR;
+
+    if (res.ok && rate && Number.isFinite(rate) && rate > 0) {
+      usdToInrRateCache = {
+        rate,
+        expiresAt: Date.now() + USD_TO_INR_RATE_CACHE_MS,
+      };
+      return rate;
+    }
+  } catch (error) {
+    console.warn("USD to INR rate fetch failed; using fallback rate.", error);
+  }
+
+  return USD_TO_INR_RATE_FALLBACK;
+}
+
+async function getSolToInrRate() {
+  const raw = process.env.KIRA_PAY_SOL_TO_INR_RATE?.trim();
+  const parsed = raw ? Number(raw) : null;
+
+  if (parsed && Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  if (solToInrRateCache && solToInrRateCache.expiresAt > Date.now()) {
+    return solToInrRateCache.rate;
+  }
+
+  try {
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=inr",
+      {
+        next: { revalidate: SOL_TO_INR_RATE_CACHE_MS / 1000 },
+      }
+    );
+    const data = (await res.json().catch(() => ({}))) as {
+      solana?: { inr?: number };
+    };
+    const rate = data.solana?.inr;
+
+    if (res.ok && rate && Number.isFinite(rate) && rate > 0) {
+      solToInrRateCache = {
+        rate,
+        expiresAt: Date.now() + SOL_TO_INR_RATE_CACHE_MS,
+      };
+      return rate;
+    }
+  } catch (error) {
+    console.warn("SOL to INR rate fetch failed; using fallback rate.", error);
+  }
+
+  return SOL_TO_INR_RATE_FALLBACK;
+}
+
+async function deriveOriginalPrice(
+  amount: number,
+  fiatCurrency: string,
+  currency: "SOL" | "PUSD" | "USDC"
+) {
   const fixed = getFixedOriginalPrice();
   if (fixed !== null) return fixed;
 
   const upperCurrency = fiatCurrency.toUpperCase();
   const zeroDecimalCurrencies = new Set(["VND", "JPY", "KRW"]);
 
-  // Pragmatic fallback for checkout testing:
-  // convert tiny SOL-denominated slot prices into a non-zero fiat checkout amount.
-  if (upperCurrency === "INR") {
-    return Math.max(100, Math.round(amount * 100_000));
+  if (upperCurrency === "INR" && (currency === "USDC" || currency === "PUSD")) {
+    return Math.max(1, Math.round(amount * await getUsdToInrRate()));
+  }
+
+  if (upperCurrency === "INR" && currency === "SOL") {
+    return Math.max(1, Math.round(amount * await getSolToInrRate()));
   }
 
   return zeroDecimalCurrencies.has(upperCurrency)
@@ -179,7 +265,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const originalPrice = deriveOriginalPrice(slot.price, fiatCurrency);
+    const originalPrice = await deriveOriginalPrice(slot.price, fiatCurrency, slot.currency);
     const customOrderId = `interval-${crypto.randomUUID()}`;
 
     if (originalPrice <= 0) {

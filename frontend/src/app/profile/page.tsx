@@ -18,10 +18,13 @@ type BalanceData = {
   network: string;
   sol: number;
   pusd: number;
+  usdc: number;
   bookingCreditsUsd: number;
   bookingCreditsCents: number;
   pusdTokenAccountExists: boolean;
   pusdAta: string;
+  usdcTokenAccountExists: boolean;
+  usdcAta: string;
 };
 
 type UserBooking = {
@@ -126,6 +129,8 @@ function getDodoTopupSessionKey(walletAddress: string) {
   return `interval:profile:dodo-topup:${walletAddress}`;
 }
 
+const BALANCE_POLL_INTERVAL_MS = 10 * 60 * 1000;
+
 export default function ProfilePage() {
   const searchParams = useSearchParams();
   const {
@@ -196,6 +201,16 @@ export default function ProfilePage() {
   useEffect(() => {
     loadBalances();
   }, [loadBalances]);
+
+  useEffect(() => {
+    if (!walletAddress) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadBalances();
+    }, BALANCE_POLL_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadBalances, walletAddress]);
 
   useEffect(() => {
     loadBookings();
@@ -624,7 +639,7 @@ export default function ProfilePage() {
                 </button>
               </div>
               <div className="grid gap-3">
-                <InfoCard label="Balances" value="SOL + PUSD" detail="Check wallet funds and PUSD readiness." />
+                <InfoCard label="Balances" value="SOL + PUSD + USDC" detail="Check wallet funds and token readiness." />
                 <InfoCard label="Recent bookings" value="Clean history" detail="See who you booked and when each call happens." />
                 <InfoCard label="Next session" value="Always visible" detail="Your next booking stays front and center." />
               </div>
@@ -672,6 +687,10 @@ export default function ProfilePage() {
                       <BalancePill
                         label="PUSD"
                         value={loadingBalances && !balances ? "..." : formatTokenAmount(balances?.pusd ?? 0, 2)}
+                      />
+                      <BalancePill
+                        label="USDC"
+                        value={loadingBalances && !balances ? "..." : formatTokenAmount(balances?.usdc ?? 0, 2)}
                       />
                       <BalancePill
                         label="Credits"
@@ -937,6 +956,16 @@ export default function ProfilePage() {
                       </p>
                       <p className="mt-2 text-sm text-white/48">
                         Card top-ups from Dodo land here and can power future booking flows.
+                      </p>
+                    </div>
+
+                    <div className="rounded-[1.5rem] bg-[#101010] p-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">USDC balance</p>
+                      <p className="mt-4 text-4xl font-semibold text-white">
+                        {loadingBalances && !balances ? "..." : `${formatTokenAmount(balances?.usdc ?? 0, 2)} USDC`}
+                      </p>
+                      <p className="mt-2 text-sm text-white/48">
+                        Uses the configured USDC mint for {balances?.network === "devnet" ? "devnet" : "mainnet"}.
                       </p>
                     </div>
 

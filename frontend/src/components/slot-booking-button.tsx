@@ -42,7 +42,7 @@ export function SlotBookingButton({
 
   const canBook = ready && connected && wallet && walletAddress;
   const canBookWithDodo = currency === "USDC" && isDodoEnabled;
-  const canBookWithKira = currency === "USDC" && isKiroEnabled;
+  const canBookWithKira = (currency === "SOL" || currency === "USDC") && isKiroEnabled;
 
   useEffect(() => {
     if (!paymentModalOpen) return;
@@ -370,12 +370,12 @@ export function SlotBookingButton({
                   >
                     <span>
                       <span className="block text-sm font-semibold text-white">
-                        Pay with KIRAPAY
+                        Checkout from another chain
                       </span>
                       <span className="mt-1 block text-xs text-white/50">
                         {kiraLoading
                           ? "Opening hosted checkout..."
-                          : "Hosted checkout for this USDC booking"}
+                          : `Use KIRAPAY for this ${currency} booking`}
                       </span>
                     </span>
                     <span className="text-sm font-medium text-[#ffd28e]">
