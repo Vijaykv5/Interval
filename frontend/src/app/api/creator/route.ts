@@ -6,6 +6,7 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const wallet = searchParams.get("wallet");
+    const allowMissing = searchParams.get("allowMissing") === "true";
 
     if (!wallet || wallet.length === 0) {
       return NextResponse.json(
@@ -19,6 +20,10 @@ export async function GET(req: Request) {
     });
 
     if (!creator) {
+      if (allowMissing) {
+        return NextResponse.json({ creator: null });
+      }
+
       return NextResponse.json(
         { error: "Creator not found" },
         { status: 404 }

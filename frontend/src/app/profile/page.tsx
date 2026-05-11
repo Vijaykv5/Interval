@@ -993,44 +993,42 @@ export default function ProfilePage() {
               <ProfileModal
                 title="Top up booking credits"
                 onClose={() => setDepositModalOpen(false)}
+                size="wide"
               >
-                <div className="space-y-5">
-                  <ModalField
-                    label="Current credit balance"
-                    value={loadingBalances && !balances ? "..." : `$${formatUsdAmount(balances?.bookingCreditsUsd ?? 0)}`}
-                  />
-                  <div className="rounded-[1.4rem] border border-[#ffd28e]/14 bg-[linear-gradient(180deg,rgba(255,210,142,0.08),rgba(16,16,16,0.96))] p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#ffd28e]/72">Powered by Dodo Payments</p>
-                    <p className="mt-2 text-sm leading-6 text-white/60">
-                      Pay in your local currency with Dodo checkout. Once the webhook confirms payment, the same connected wallet gets credited inside your Interval dashboard.
-                    </p>
-                  </div>
-                  <div className="grid gap-3">
+                <div className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-3">
                     {DODO_TOPUP_PACKS.map((pack) => {
                       const isLoadingPack = topupLoadingPackId === pack.id;
                       return (
                         <div
                           key={pack.id}
-                          className={`rounded-[1.4rem] border border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))] p-4`}
+                          className="flex min-h-48 flex-col rounded-[1.25rem] border border-white/10 bg-[#111111] p-4"
                         >
-                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <p className="text-lg font-semibold text-white">{pack.label}</p>
-                              <p className="mt-1 text-sm text-white/56">{pack.caption}</p>
-                              <div className="mt-3 flex flex-wrap gap-3 text-sm text-white/72">
-                                <span className="rounded-full bg-white/6 px-3 py-1.5">+${pack.creditsUsd.toFixed(2)} credits</span>
-                                <span className="rounded-full bg-white/6 px-3 py-1.5">Pay in local currency at checkout</span>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => void startTopup(pack)}
-                              disabled={Boolean(topupLoadingPackId)}
-                              className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#ffd28e] px-5 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-[#ffc97a] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f0f0f]"
-                            >
-                              {isLoadingPack ? "Opening checkout..." : `Top up $${pack.creditsUsd.toFixed(2)}`}
-                            </button>
+                          <div className="min-w-0">
+                            <p className="text-xl font-semibold text-white">{pack.label}</p>
+                            <p className="mt-2 min-h-10 text-sm leading-5 text-white/56">{pack.caption}</p>
                           </div>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <span className="rounded-full bg-white/7 px-3 py-1.5 text-sm font-semibold text-white/80">
+                              +${pack.creditsUsd.toFixed(2)} credits
+                            </span>
+                            <span className="rounded-full bg-white/7 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-white/44">
+                              Local checkout
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void startTopup(pack)}
+                            disabled={Boolean(topupLoadingPackId)}
+                            className="mt-auto inline-flex min-h-12 w-full items-center justify-center rounded-full bg-[#ffd28e] px-5 py-2.5 text-center text-sm font-semibold text-black transition-colors hover:bg-[#ffc97a] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd28e]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f0f0f]"
+                          >
+                            {isLoadingPack ? "Opening..." : (
+                              <span className="leading-5">
+                                Top up<br />
+                                ${pack.creditsUsd.toFixed(2)}
+                              </span>
+                            )}
+                          </button>
                         </div>
                       );
                     })}
@@ -1040,32 +1038,6 @@ export default function ProfilePage() {
                       {topupProcessingMessage}
                     </div>
                   ) : null}
-                  <ModalField
-                    label="Wallet receiving credits"
-                    value={shortenAddress(walletAddress ?? "")}
-                    mono
-                    trailingAction={
-                      walletAddress ? (
-                        <button
-                          type="button"
-                          onClick={() => void copyValue(walletAddress, "deposit")}
-                          className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full bg-[#1f1f1f] text-white/76 transition-colors hover:bg-[#272727] hover:text-white"
-                          aria-label="Copy deposit address"
-                        >
-                          <AnimatedStatusIcon copied={copied === "deposit"} />
-                        </button>
-                      ) : null
-                    }
-                  />
-                  {walletAddress && (
-                    <button
-                      type="button"
-                      onClick={() => void copyValue(walletAddress, "address")}
-                      className="w-full rounded-[1.25rem] bg-[#171717] px-5 py-4 text-base font-semibold text-white transition-colors hover:bg-[#202020] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f0f0f]"
-                    >
-                      {copied === "address" ? "Wallet copied" : "Copy wallet"}
-                    </button>
-                  )}
                 </div>
               </ProfileModal>
             )}
@@ -1185,11 +1157,15 @@ function ProfileModal({
   title,
   onClose,
   children,
+  size = "default",
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  size?: "default" | "wide";
 }) {
+  const widthClass = size === "wide" ? "max-w-5xl" : "max-w-xl";
+
   return (
     <>
       <div
@@ -1198,7 +1174,7 @@ function ProfileModal({
         onClick={onClose}
       />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-xl rounded-[1.75rem] bg-[#0f0f0f] p-5 shadow-2xl sm:p-6" onClick={(e) => e.stopPropagation()}>
+        <div className={`max-h-[min(90vh,760px)] w-full ${widthClass} overflow-y-auto rounded-[1.75rem] bg-[#0f0f0f] p-5 shadow-2xl sm:p-6`} onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between gap-4">
             <h3
               className="text-2xl font-semibold text-white sm:text-3xl"

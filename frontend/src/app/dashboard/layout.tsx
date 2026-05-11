@@ -113,6 +113,7 @@ function DashboardLayoutClient({
         const data = await res.json().catch(() => ({}));
         const hasAccess = data?.hasAccess === true;
         const creatorExists = data?.creatorExists === true;
+        const onchainReady = data?.onchainReady === true;
 
         if (!hasAccess) {
           setCheckedWalletAddress(walletAddress);
@@ -121,6 +122,12 @@ function DashboardLayoutClient({
         }
 
         if (!creatorExists && !isOnboardingPage) {
+          setCheckedWalletAddress(walletAddress);
+          router.replace("/dashboard/onboarding");
+          return;
+        }
+
+        if (creatorExists && !onchainReady && !isOnboardingPage) {
           setCheckedWalletAddress(walletAddress);
           router.replace("/dashboard/onboarding");
           return;

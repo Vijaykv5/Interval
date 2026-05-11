@@ -35,6 +35,13 @@ function signatureToString(signature: string | Uint8Array | undefined) {
   return typeof signature === "string" ? signature : bs58.encode(signature);
 }
 
+function getCreatorFromResponse(data: unknown): Creator | null {
+  if (data && typeof data === "object" && "creator" in data) {
+    return (data as { creator: Creator | null }).creator;
+  }
+  return data as Creator;
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { ready, authenticated } = usePrivy();
@@ -97,16 +104,21 @@ export default function ProfilePage() {
     async function fetchCreator() {
       try {
         const res = await fetch(
-          `/api/creator?wallet=${encodeURIComponent(walletAddress)}`
+          `/api/creator?wallet=${encodeURIComponent(walletAddress)}&allowMissing=true`
         );
         if (cancelled) return;
         if (res.ok) {
           const data = await res.json();
-          setCreator(data);
-          setUsername(data.username ?? "");
-          setProfileImageUrl(data.profileImageUrl ?? "");
-          setXAccount(data.xAccount ?? "");
-          setBio(data.bio ?? "");
+          const creatorData = getCreatorFromResponse(data);
+          if (creatorData) {
+            setCreator(creatorData);
+            setUsername(creatorData.username ?? "");
+            setProfileImageUrl(creatorData.profileImageUrl ?? "");
+            setXAccount(creatorData.xAccount ?? "");
+            setBio(creatorData.bio ?? "");
+          } else {
+            setCreator(null);
+          }
         }
       } catch {
         if (!cancelled) setCreator(null);

@@ -8,6 +8,7 @@ import {
 import { NextResponse } from "next/server";
 import {
   buildInitializeTreasuryInstruction,
+  buildInitializePlatformInstruction,
   buildOnboardCreatorInstruction,
   findCreatorProfilePda,
   findPlatformPda,
@@ -143,10 +144,11 @@ export async function POST(req: Request) {
     const platform = findPlatformPda();
     const platformAccount = await connection.getAccountInfo(platform, "confirmed");
     if (!platformAccount) {
-      return NextResponse.json(
-        { error: "Interval platform is not initialized on-chain." },
-        { status: 400 }
+      const initializeTx = new Transaction().add(
+        await buildInitializePlatformInstruction(admin.publicKey)
       );
+      initializeTx.feePayer = admin.publicKey;
+      await sendAndConfirm(connection, initializeTx, [admin]);
     }
 
     const onboardingLamports = getOnboardingLamports();

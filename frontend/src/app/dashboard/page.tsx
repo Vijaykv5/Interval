@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import bs58 from "bs58";
 import {
   useWallets,
@@ -78,6 +78,13 @@ type DashboardData = {
   bookings: Booking[];
   walletBalance: number | null;
 };
+
+function getCreatorFromResponse(data: unknown): Creator | null {
+  if (data && typeof data === "object" && "creator" in data) {
+    return (data as { creator: Creator | null }).creator;
+  }
+  return data as Creator;
+}
 
 type TreasuryBalances = {
   wallet: string;
@@ -184,6 +191,7 @@ function addMinutesToDatetimeLocal(dt: string, minutes: number): string {
 }
 
 export default function Dashboard() {
+  const router = useRouter();
   const { wallets } = useWallets();
   const { signAndSendTransaction } = useSignAndSendTransaction();
   const { signTransaction } = useSignTransaction();
@@ -372,7 +380,7 @@ export default function Dashboard() {
     async function load() {
       try {
         const creatorRes = await fetch(
-          `/api/creator?wallet=${encodeURIComponent(walletAddress)}`
+          `/api/creator?wallet=${encodeURIComponent(walletAddress)}&allowMissing=true`
         );
         if (cancelled || !creatorRes.ok) {
           if (!cancelled) {
@@ -389,8 +397,13 @@ export default function Dashboard() {
           }
           return;
         }
-        const creatorData = await creatorRes.json();
+        const creatorResponse = await creatorRes.json();
+        const creatorData = getCreatorFromResponse(creatorResponse);
         if (cancelled) return;
+        if (!creatorData) {
+          router.replace("/dashboard/onboarding");
+          return;
+        }
         setCreator(creatorData);
 
         const dashRes = await fetch(
@@ -436,7 +449,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [walletAddress, refreshTreasuryBalances, refreshLpPositionsSummary]);
+  }, [walletAddress, refreshTreasuryBalances, refreshLpPositionsSummary, router]);
 
   useEffect(() => {
     let cancelled = false;

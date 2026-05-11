@@ -41,6 +41,13 @@ function signatureToString(signature: string | Uint8Array | undefined) {
   return typeof signature === "string" ? signature : bs58.encode(signature);
 }
 
+function getCreatorFromResponse(data: unknown): Creator | null {
+  if (data && typeof data === "object" && "creator" in data) {
+    return (data as { creator: Creator | null }).creator;
+  }
+  return data as Creator;
+}
+
 export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closable = true }: OnboardingModalProps) {
   const { wallets } = useWallets();
   const { signAndSendTransaction } = useSignAndSendTransaction();
@@ -70,7 +77,7 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
     async function fetchCreator() {
       setCheckingExistingProfile(true);
       try {
-        const res = await fetch(`/api/creator?wallet=${encodeURIComponent(walletAddress)}`);
+        const res = await fetch(`/api/creator?wallet=${encodeURIComponent(walletAddress)}&allowMissing=true`);
         if (!res.ok) {
           if (!cancelled) {
             setCreator(null);
@@ -80,12 +87,16 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
 
         const data = await res.json();
         if (cancelled) return;
-        setCreator(data);
-        setUsername(data.username ?? "");
-        setProfileImageUrl(data.profileImageUrl ?? "");
-        setXAccount(data.xAccount ?? "");
-        setBio(data.bio ?? "");
-        onSuccess();
+        const creatorData = getCreatorFromResponse(data);
+        if (creatorData) {
+          setCreator(creatorData);
+          setUsername(creatorData.username ?? "");
+          setProfileImageUrl(creatorData.profileImageUrl ?? "");
+          setXAccount(creatorData.xAccount ?? "");
+          setBio(creatorData.bio ?? "");
+        } else {
+          setCreator(null);
+        }
       } catch {
         if (!cancelled) {
           setCreator(null);
@@ -235,14 +246,15 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
   }
 
   async function saveCreatorProfile() {
+    const hasExistingCreator = Boolean(creator?.id);
     const res = await fetch("/api/creator", {
-      method: creator ? "PATCH" : "POST",
+      method: hasExistingCreator ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(getCreatorPayload()),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(data?.error ?? (creator ? "Failed to update profile" : "Failed to create profile"));
+      throw new Error(data?.error ?? (hasExistingCreator ? "Failed to update profile" : "Failed to create profile"));
     }
     setCreator(data);
   }
@@ -253,6 +265,7 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
     setSubmitting(true);
     try {
       await validateCreatorPayload();
+      await saveCreatorProfile();
       if (solanaWallet?.address === walletAddress) {
         try {
           await completeOnchainSetup();
@@ -270,7 +283,6 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
           return;
         }
       }
-      await saveCreatorProfile();
       onSuccess();
     } catch (submitError) {
       setError(
@@ -447,7 +459,7 @@ export function OnboardingModal({ open, onClose, walletAddress, onSuccess, closa
               className="w-full px-5 py-2.5 rounded-lg font-medium text-black hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-white/30 focus:ring-offset-2 focus:ring-offset-[#0d0d0f] disabled:opacity-60 disabled:pointer-events-none"
               style={{ backgroundColor: "#ffd28e" }}
             >
-              {submitting ? "Saving…" : "Continue to dashboard"}
+              {submitting ? "Saving…" : "Save profile and create creator on-chain"}
             </button>
           </div>
         </form>

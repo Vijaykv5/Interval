@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { AuthRoleModal } from "@/components/auth-role-modal";
 import { CreatorAccessCodeModal } from "@/components/creator-access-code-modal";
 import { useUserWallet } from "@/components/user-wallet-provider";
-import { clearAuthIntent, type AuthIntentRole } from "@/lib/auth-intent";
+import { clearAuthIntent, setAuthIntent, type AuthIntentRole } from "@/lib/auth-intent";
 
 function shortenAddress(address: string) {
   if (!address || address.length < 10) return address;
@@ -37,6 +37,13 @@ type WalletAuthProps = {
   variant?: "header" | "sidebar" | "landing";
   unauthenticatedLabel?: string;
 };
+
+function getCreatorFromResponse(data: unknown): { profileImageUrl: string | null } | null {
+  if (data && typeof data === "object" && "creator" in data) {
+    return (data as { creator: { profileImageUrl: string | null } | null }).creator;
+  }
+  return data as { profileImageUrl: string | null } | null;
+}
 
 export function WalletAuth({
   variant = "header",
@@ -94,11 +101,12 @@ export function WalletAuth({
 
     let cancelled = false;
 
-    fetch(`/api/creator?wallet=${encodeURIComponent(creatorWalletAddress)}`)
+    fetch(`/api/creator?wallet=${encodeURIComponent(creatorWalletAddress)}&allowMissing=true`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!cancelled) {
-          setCreatorProfileImageUrl(data?.profileImageUrl ?? null);
+          const creator = getCreatorFromResponse(data);
+          setCreatorProfileImageUrl(creator?.profileImageUrl ?? null);
         }
       })
       .catch(() => {
@@ -200,6 +208,7 @@ export function WalletAuth({
 
       setCreatorAccessCode("");
       setCreatorAccessOpen(false);
+      setAuthIntent("creator");
       login();
     } catch {
       setCreatorAccessError("Network error. Please try again.");
@@ -210,12 +219,14 @@ export function WalletAuth({
 
   function handleRoleSelect(role: AuthIntentRole) {
     if (role === "creator") {
+      setAuthIntent("creator");
       setRoleModalOpen(false);
       setCreatorAccessError(null);
       setCreatorAccessOpen(true);
       return;
     }
 
+    setAuthIntent("user");
     setRoleModalOpen(false);
     try {
       openConnectModal();
