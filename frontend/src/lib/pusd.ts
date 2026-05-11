@@ -3,6 +3,7 @@
 import {
   createAssociatedTokenAccountInstruction,
   getAssociatedTokenAddress,
+  TOKEN_2022_PROGRAM_ID,
 } from "@solana/spl-token";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
@@ -65,7 +66,12 @@ export async function ensurePusdTokenAccount<TWallet extends IntervalSolanaWalle
   }
 
   const owner = new PublicKey(walletAddress);
-  const ata = await getAssociatedTokenAddress(pusdMint, owner);
+  const ata = await getAssociatedTokenAddress(
+    pusdMint,
+    owner,
+    false,
+    TOKEN_2022_PROGRAM_ID
+  );
   const latestBlockhash = await fetchJson<{
     blockhash: string;
     lastValidBlockHeight: number;
@@ -73,7 +79,13 @@ export async function ensurePusdTokenAccount<TWallet extends IntervalSolanaWalle
 
   const transaction = new Transaction();
   transaction.add(
-    createAssociatedTokenAccountInstruction(owner, ata, owner, pusdMint)
+    createAssociatedTokenAccountInstruction(
+      owner,
+      ata,
+      owner,
+      pusdMint,
+      TOKEN_2022_PROGRAM_ID
+    )
   );
   transaction.feePayer = owner;
   transaction.recentBlockhash = latestBlockhash.blockhash;

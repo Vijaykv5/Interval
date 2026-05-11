@@ -3,6 +3,7 @@
 import {
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
+  TOKEN_2022_PROGRAM_ID,
 } from "@solana/spl-token";
 import {
   PublicKey,
@@ -168,13 +169,21 @@ export async function payForSlot<TWallet extends IntervalSolanaWallet>({
           payer,
           creatorAta,
           creator,
-          pusdMint
+          pusdMint,
+          TOKEN_2022_PROGRAM_ID
         )
       );
     }
 
     transaction.add(
-      createTransferInstruction(userSourceTokenAccount, creatorAta, payer, amount)
+      createTransferInstruction(
+        userSourceTokenAccount,
+        creatorAta,
+        payer,
+        amount,
+        [],
+        TOKEN_2022_PROGRAM_ID
+      )
     );
 
     const latestBlockhash = await fetchJson<{

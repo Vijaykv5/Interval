@@ -65,9 +65,25 @@ function WalletContextBridge({ children }: { children: ReactNode }) {
       }
 
       const parsedTransaction = Transaction.from(Buffer.from(transaction));
-      const signature = await sendTransaction(parsedTransaction, connection, {
-        preflightCommitment: "confirmed",
-      });
+      let signature: string;
+      try {
+        signature = await sendTransaction(parsedTransaction, connection, {
+          preflightCommitment: "confirmed",
+        });
+      } catch (error) {
+        const cause =
+          error && typeof error === "object" && "cause" in error
+            ? (error as { cause?: unknown }).cause
+            : null;
+        const detailedMessage =
+          cause instanceof Error
+            ? cause.message
+            : error instanceof Error
+              ? error.message
+              : "Wallet transaction failed.";
+
+        throw new Error(detailedMessage);
+      }
 
       return { signature: bs58.decode(signature) };
     },

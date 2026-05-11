@@ -17,6 +17,7 @@ import {
   createTransferInstruction,
   getAccount,
   getAssociatedTokenAddress,
+  TOKEN_2022_PROGRAM_ID,
 } from "@solana/spl-token";
 import { MEMO_PROGRAM_ID } from "@solana/actions";
 import { prisma } from "@/lib/prisma";
@@ -308,10 +309,25 @@ export async function POST(req: Request) {
         );
       }
 
-      const userAta = await getAssociatedTokenAddress(pusdMint, account);
-      const creatorAta = await getAssociatedTokenAddress(pusdMint, creatorWallet);
+      const userAta = await getAssociatedTokenAddress(
+        pusdMint,
+        account,
+        false,
+        TOKEN_2022_PROGRAM_ID
+      );
+      const creatorAta = await getAssociatedTokenAddress(
+        pusdMint,
+        creatorWallet,
+        false,
+        TOKEN_2022_PROGRAM_ID
+      );
       try {
-        const userAccount = await getAccount(connection, userAta, "confirmed");
+        const userAccount = await getAccount(
+          connection,
+          userAta,
+          "confirmed",
+          TOKEN_2022_PROGRAM_ID
+        );
         if (userAccount.amount < amountBaseUnits) {
           return Response.json(
             { message: `Insufficient PUSD. You need ${slot.price} PUSD.` } satisfies ActionError,
@@ -326,20 +342,28 @@ export async function POST(req: Request) {
       }
 
       try {
-        await getAccount(connection, creatorAta, "confirmed");
+        await getAccount(connection, creatorAta, "confirmed", TOKEN_2022_PROGRAM_ID);
       } catch {
         paymentIxs.push(
           createAssociatedTokenAccountInstruction(
             account,
             creatorAta,
             creatorWallet,
-            pusdMint
+            pusdMint,
+            TOKEN_2022_PROGRAM_ID
           )
         );
       }
 
       paymentIxs.push(
-        createTransferInstruction(userAta, creatorAta, account, amountBaseUnits)
+        createTransferInstruction(
+          userAta,
+          creatorAta,
+          account,
+          amountBaseUnits,
+          [],
+          TOKEN_2022_PROGRAM_ID
+        )
       );
     }
 

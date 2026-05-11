@@ -1,4 +1,4 @@
-import { getAssociatedTokenAddress } from "@solana/spl-token";
+import { getAssociatedTokenAddress, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { NextResponse } from "next/server";
 import {
@@ -31,7 +31,12 @@ export async function GET(req: Request) {
     let pusdAta = "";
 
     if (pusdMint) {
-      const pusdAtaAddress = await getAssociatedTokenAddress(pusdMint, owner);
+      const pusdAtaAddress = await getAssociatedTokenAddress(
+        pusdMint,
+        owner,
+        false,
+        TOKEN_2022_PROGRAM_ID
+      );
       pusdAta = pusdAtaAddress.toBase58();
       const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
         owner,

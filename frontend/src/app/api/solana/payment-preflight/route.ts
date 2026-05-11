@@ -1,4 +1,10 @@
-import { getAccount, getAssociatedTokenAddress, TokenAccountNotFoundError, TokenInvalidAccountOwnerError } from "@solana/spl-token";
+import {
+  getAccount,
+  getAssociatedTokenAddress,
+  TOKEN_2022_PROGRAM_ID,
+  TokenAccountNotFoundError,
+  TokenInvalidAccountOwnerError,
+} from "@solana/spl-token";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { NextResponse } from "next/server";
 import { getPusdMintPublicKey, getSelectedSolanaNetwork, getSolanaRpcUrl, PUSD_DECIMALS } from "@/lib/solana-config";
@@ -47,8 +53,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const userAta = await getAssociatedTokenAddress(pusdMint, payer);
-    const creatorAta = await getAssociatedTokenAddress(pusdMint, creator);
+    const userAta = await getAssociatedTokenAddress(
+      pusdMint,
+      payer,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+    const creatorAta = await getAssociatedTokenAddress(
+      pusdMint,
+      creator,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
 
     let userTokenAmount = "0";
     let userTokenTotalAmount = "0";
@@ -105,7 +121,12 @@ export async function POST(req: Request) {
 
     if (!userTokenAccountExists) {
       try {
-        const userAccount = await getAccount(connection, userAta, "confirmed");
+        const userAccount = await getAccount(
+          connection,
+          userAta,
+          "confirmed",
+          TOKEN_2022_PROGRAM_ID
+        );
         userTokenAmount = userAccount.amount.toString();
         userTokenTotalAmount = userAccount.amount.toString();
         userSourceTokenAmount = userAccount.amount.toString();
@@ -116,7 +137,7 @@ export async function POST(req: Request) {
     }
 
     try {
-      await getAccount(connection, creatorAta, "confirmed");
+      await getAccount(connection, creatorAta, "confirmed", TOKEN_2022_PROGRAM_ID);
       creatorTokenAccountExists = true;
     } catch (err) {
       if (!isTokenAccountMissing(err)) throw err;

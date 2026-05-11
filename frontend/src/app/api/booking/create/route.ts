@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendBookingConfirmationEmail } from "@/lib/email";
 import { NextResponse } from "next/server";
-import { getAssociatedTokenAddress } from "@solana/spl-token";
+import { getAssociatedTokenAddress, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { deriveBookingId, findBookingEscrowPda, INTERVAL_PROGRAM_ID } from "@/lib/interval-program";
 import {
@@ -54,7 +54,7 @@ function readTokenTransfer(instruction: unknown) {
     };
   };
 
-  if (value.program !== "spl-token") return null;
+  if (value.program !== "spl-token" && value.program !== "spl-token-2022") return null;
   if (!value.parsed || (value.parsed.type !== "transfer" && value.parsed.type !== "transferChecked")) {
     return null;
   }
@@ -162,8 +162,22 @@ async function verifyBookingPayment({
 
   const payer = new PublicKey(payerWallet);
   const creator = new PublicKey(creatorWallet);
-  const expectedSource = (await getAssociatedTokenAddress(pusdMint, payer)).toBase58();
-  const expectedDestination = (await getAssociatedTokenAddress(pusdMint, creator)).toBase58();
+  const expectedSource = (
+    await getAssociatedTokenAddress(
+      pusdMint,
+      payer,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    )
+  ).toBase58();
+  const expectedDestination = (
+    await getAssociatedTokenAddress(
+      pusdMint,
+      creator,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    )
+  ).toBase58();
   const expectedAmount = toBaseUnits(amount, PUSD_DECIMALS);
   const possibleTransfers = tx.transaction.message.instructions
     .map((instruction) => readTokenTransfer(instruction))
