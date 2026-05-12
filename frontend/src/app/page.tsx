@@ -15,8 +15,8 @@ const CREATOR_CARD_TEMPLATES = [
   { src: "/images/3.png", alt: "Creator", accent: "var(--interval-card-legendary)", price: "2 SOL", priceLabel: "/ book", description: "Book a slot and connect on Solana." },
 ];
 
-const LANDING_VIDEO_SRC = "/videos/landing-loop.mp4";
-const CREATORS_USERS_VIDEO_SRC = "/videos/creators-users-loop.mp4";
+const CREATOR_VIDEO_SRC = "/videos/creator-loop.mp4";
+const USERS_VIDEO_SRC = "/videos/users-loop.mp4";
 
 /** Fanned card layout: center straight, adjacent slightly twisted, ends more twisted */
 function getCardTransform(i: number, total: number) {
@@ -146,17 +146,16 @@ export default function Home() {
           <div className="relative mt-14 grid items-center gap-10 lg:mt-20 lg:grid-cols-[0.85fr_1.15fr] lg:gap-16">
             <div className="mx-auto max-w-xl text-center lg:mx-0 lg:text-left">
               <p className="text-xl font-semibold" style={{ color: "#ffd28e" }}>
-                Watch
+                For creators
               </p>
               <h3
                 className="mt-5 text-3xl font-extrabold leading-tight text-white sm:text-4xl lg:text-5xl"
                 style={{ fontFamily: "var(--font-archivo-condensed), sans-serif" }}
               >
-                Watch your booked call come together in real time
+                Open paid slots in minutes
               </h3>
               <p className="mt-5 text-base leading-7 text-white/65 sm:text-lg">
-                Give visitors a quick product preview as they scroll. Drop your loop into
-                <span className="text-white"> public/videos/landing-loop.mp4</span> and this frame will play it automatically.
+                A quick look at how creators can open paid slots, manage availability, and turn attention into booked time.
               </p>
             </div>
 
@@ -168,11 +167,10 @@ export default function Home() {
                   loop
                   muted
                   playsInline
-                  preload="metadata"
-                  poster="/images/flow-diagram.png"
-                  aria-label="Interval product preview"
+                  preload="auto"
+                  aria-label="Interval creator preview"
                 >
-                  <source src={LANDING_VIDEO_SRC} type="video/mp4" />
+                  <source src={CREATOR_VIDEO_SRC} type="video/mp4" />
                 </video>
               </div>
             </div>
@@ -184,7 +182,7 @@ export default function Home() {
         <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black via-black/80 to-transparent" />
         <div className="pointer-events-none absolute right-0 top-12 h-[24rem] w-[24rem] rounded-full bg-[#ffd28e]/[0.07] blur-3xl" />
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16">
-          <div className="relative mx-auto w-full max-w-4xl overflow-hidden rounded-2xl border border-[#ffd28e]/15 bg-white/[0.035] shadow-2xl shadow-black/40">
+          <div className="relative order-2 mx-auto w-full max-w-4xl overflow-hidden rounded-2xl border border-[#ffd28e]/15 bg-white/[0.035] shadow-2xl shadow-black/40 lg:order-1">
             <div className="aspect-[16/9] bg-[#070707]">
               <video
                 className="h-full w-full object-cover"
@@ -192,38 +190,36 @@ export default function Home() {
                 loop
                 muted
                 playsInline
-                preload="metadata"
-                poster="/images/flow-diagram.png"
-                aria-label="Interval creators and users preview"
+                preload="auto"
+                aria-label="Interval user preview"
               >
-                <source src={CREATORS_USERS_VIDEO_SRC} type="video/mp4" />
-                <source src={LANDING_VIDEO_SRC} type="video/mp4" />
+                <source src={USERS_VIDEO_SRC} type="video/mp4" />
               </video>
             </div>
           </div>
 
-          <div className="relative mx-auto max-w-xl text-center lg:mx-0 lg:text-left">
+          <div className="relative order-1 mx-auto max-w-xl text-center lg:order-2 lg:mx-0 lg:text-left">
             <p className="text-xl font-semibold" style={{ color: "#ffd28e" }}>
-              For creators and users
+              For users
             </p>
             <h2
               className="mt-5 text-4xl font-extrabold leading-tight text-white sm:text-5xl lg:text-6xl"
               style={{ fontFamily: "var(--font-archivo-condensed), sans-serif" }}
             >
-              One place to sell time and book access
+              Book access without the back-and-forth
             </h2>
             <p className="mt-5 text-base leading-7 text-white/65 sm:text-lg">
-              Creators get a simple way to open paid slots. Users get a clean booking flow,
-              clear payment confirmation, and direct access to the people they follow.
+              Users get a clean booking flow, clear payment confirmation, and direct access
+              to the creators and founders they follow.
             </p>
             <div className="mt-8 grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-left">
-                <p className="text-sm font-semibold text-white">Creators</p>
-                <p className="mt-2 text-sm leading-6 text-white/60">Set your price, share your page, and manage bookings.</p>
+                <p className="text-sm font-semibold text-white">Find a slot</p>
+                <p className="mt-2 text-sm leading-6 text-white/60">Pick a time that works and book directly from a creator page.</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-left">
-                <p className="text-sm font-semibold text-white">Users</p>
-                <p className="mt-2 text-sm leading-6 text-white/60">Find a slot, pay on Solana, and show up with context.</p>
+                <p className="text-sm font-semibold text-white">Pay and join</p>
+                <p className="mt-2 text-sm leading-6 text-white/60">Pay on Solana, get confirmation, and show up with context.</p>
               </div>
             </div>
           </div>
@@ -267,12 +263,6 @@ export default function Home() {
             </Link>
             <Link className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white" href="/explore">
               Explore
-            </Link>
-            <Link className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white" href="/dashboard">
-              Dashboard
-            </Link>
-            <Link className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white" href="/profile">
-              Profile
             </Link>
             <a
               className="motion-safe:transition-colors motion-safe:duration-150 hover:text-white"
