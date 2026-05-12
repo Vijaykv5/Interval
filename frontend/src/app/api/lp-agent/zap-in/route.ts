@@ -1,8 +1,17 @@
-import { PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
+import {
+  Connection,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  Transaction,
+  VersionedTransaction,
+} from "@solana/web3.js";
 import { NextResponse } from "next/server";
 import { LpAgentRequestError, lpAgentRequest } from "@/lib/lp-agent";
+import { getSelectedSolanaNetwork, getSolanaRpcUrl } from "@/lib/solana-config";
 
 const LP_AGENT_BASE_URL = "https://api.lpagent.io/open-api/v1";
+const ZAP_IN_SOL_RESERVE = 0.03;
+const ZAP_IN_LAMPORT_RESERVE = Math.ceil(ZAP_IN_SOL_RESERVE * LAMPORTS_PER_SOL);
 
 type ZapInBody = {
   wallet?: string;
@@ -45,6 +54,24 @@ type LandingAddResponse = {
   };
 };
 
+function extractLpAgentError(parsed: unknown, rawText: string) {
+  if (parsed && typeof parsed === "object" && parsed !== null) {
+    if ("message" in parsed && typeof parsed.message === "string") return parsed.message;
+    if ("error" in parsed && typeof parsed.error === "string") return parsed.error;
+  }
+
+  return rawText || "LP Agent rejected the landing request";
+}
+
+function isInsufficientFundsError(message: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("custom program error: 0x1") ||
+    normalized.includes("insufficient lamports") ||
+    normalized.includes("insufficient funds")
+  );
+}
+
 function assertSignedTransactionDecodes(base64Tx: string) {
   const raw = Buffer.from(base64Tx, "base64");
 
@@ -80,7 +107,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "inputSOL must be greater than 0" }, { status: 400 });
     }
 
-    new PublicKey(wallet);
+    const owner = new PublicKey(wallet);
 
     if (body.lastValidBlockHeight && body.meta) {
       const apiKey =
@@ -92,6 +119,16 @@ export async function POST(req: Request) {
         return NextResponse.json(
           { error: "LP Agent API key is not configured.", stage: "landing" },
           { status: 500 }
+        );
+      }
+
+      const signedTransactionCount =
+        (body.signedSwapTxs?.length ?? 0) + (body.signedAddTxs?.length ?? 0);
+
+      if (signedTransactionCount === 0) {
+        return NextResponse.json(
+          { error: "No signed zap-in transactions were provided for landing.", stage: "landing" },
+          { status: 400 }
         );
       }
 
@@ -129,12 +166,12 @@ export async function POST(req: Request) {
       }
 
       if (!landingResponse.ok) {
-        const detail =
-          parsed && typeof parsed === "object" && parsed !== null && "message" in parsed && typeof parsed.message === "string"
-            ? parsed.message
-            : parsed && typeof parsed === "object" && parsed !== null && "error" in parsed && typeof parsed.error === "string"
-              ? parsed.error
-              : rawText || "LP Agent rejected the landing request";
+        const detail = extractLpAgentError(parsed, rawText);
+        const error = isInsufficientFundsError(detail)
+          ? `The signed zap-in reached LP Agent, but Solana rejected it for insufficient funds during execution. Keep at least ${ZAP_IN_SOL_RESERVE.toFixed(
+              2
+            )} SOL unspent for fees/rent, then try a smaller amount or a more liquid pool so the swap output can cover the add-liquidity step.`
+          : "LP Agent rejected the final landing step for these signed transactions. The swap/liquidity bundle was not completed through their landing endpoint.";
 
         console.error("LP Agent landing-add-tx failed", {
           status: landingResponse.status,
@@ -151,8 +188,7 @@ export async function POST(req: Request) {
         });
         return NextResponse.json(
           {
-            error:
-              "LP Agent rejected the final landing step for these signed transactions. The swap/liquidity bundle was not completed through their landing endpoint.",
+            error,
             detail,
             stage: "landing",
             upstreamStatus: landingResponse.status,
@@ -171,6 +207,32 @@ export async function POST(req: Request) {
       return NextResponse.json({
         signature: landingRes.data?.signature ?? null,
       });
+    }
+
+    const inputLamports = Math.ceil(inputSOL * LAMPORTS_PER_SOL);
+    const network = getSelectedSolanaNetwork(req.headers.get("cookie"));
+    const connection = new Connection(getSolanaRpcUrl(network), "confirmed");
+    const ownerLamports = await connection.getBalance(owner, "confirmed");
+
+    if (ownerLamports < inputLamports + ZAP_IN_LAMPORT_RESERVE) {
+      const availableSol = ownerLamports / LAMPORTS_PER_SOL;
+      const maxZapSol = Math.max(0, (ownerLamports - ZAP_IN_LAMPORT_RESERVE) / LAMPORTS_PER_SOL);
+
+      return NextResponse.json(
+        {
+          error: `Leave at least ${ZAP_IN_SOL_RESERVE.toFixed(
+            2
+          )} SOL in your wallet for zap-in fees, rent, and bundle landing. Your balance is ${availableSol.toFixed(
+            4
+          )} SOL, so the largest safer zap is about ${maxZapSol.toFixed(4)} SOL.`,
+          stage: "prepare",
+          wallet,
+          inputSOL,
+          balanceSOL: availableSol,
+          maxZapSOL: maxZapSol,
+        },
+        { status: 400 }
+      );
     }
 
     const isKnownDammPool = poolProtocol === "meteora_damm_v2";
