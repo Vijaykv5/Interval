@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Interval/frontend/public/favicon.png" alt="Interval logo" width="84" height="84" />
+  <img src="frontend/public/favicon.png" alt="Interval logo" width="84" height="84" />
 </p>
 
 <h1 align="center">Interval</h1>
